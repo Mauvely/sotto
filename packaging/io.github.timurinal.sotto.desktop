@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sotto
+GenericName=Local dictation
+Comment=Fully local voice dictation — audio never leaves this device
+Exec=sotto
+Icon=io.github.timurinal.sotto
+Terminal=false
+Categories=Utility;Accessibility;Audio;
+Keywords=dictation;speech;voice;transcription;whisper;
+X-GNOME-UsesNotifications=true
