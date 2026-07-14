@@ -32,4 +32,11 @@ bool available();
 // Close a portal session object (org.freedesktop.portal.Session.Close).
 void closeSession(const QString &sessionHandle);
 
+// xdg-desktop-portal >= 1.20 requires non-sandboxed ("host") apps to
+// self-report their app id via org.freedesktop.host.portal.Registry before
+// using identity-sensitive portals; >= 1.21 hard-rejects GlobalShortcuts
+// sessions with an empty app id otherwise ("An app id is required"). Call
+// this once at startup, before any other portal call.
+void registerHostApp(const QString &appId);
+
 } // namespace Portal

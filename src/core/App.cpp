@@ -6,6 +6,7 @@
 #include "hotkey/GlobalShortcutsPortal.h"
 #include "inject/PortalRemoteDesktop.h"
 #include "inject/TextInjector.h"
+#include "portal/PortalRequest.h"
 #include "stt/ModelManager.h"
 #include "stt/TranscriptionSession.h"
 #include "stt/WhisperEngine.h"
@@ -42,6 +43,11 @@ App::~App()
 
 void App::initialize()
 {
+    // Portals >= 1.20 require unsandboxed apps to self-report an app id
+    // before using identity-sensitive interfaces like GlobalShortcuts.
+    // Must happen before GlobalShortcutsPortal/PortalRemoteDesktop below.
+    Portal::registerHostApp(QStringLiteral("io.github.timurinal.sotto"));
+
     m_models = new ModelManager(this);
     m_capture = new AudioCapture(this);
     m_session = new TranscriptionSession(m_settings, this);

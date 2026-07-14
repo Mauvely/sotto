@@ -60,6 +60,13 @@ set(WHISPER_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS      OFF CACHE BOOL "" FORCE)
 
+# These are CACHE variables, so a prior configure with a different
+# SOTTO_GPU value leaves its backend switched on unless we explicitly turn
+# everything off here before turning the selected one on.
+set(GGML_HIP    OFF CACHE BOOL "" FORCE)
+set(GGML_CUDA   OFF CACHE BOOL "" FORCE)
+set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+
 if(SOTTO_GPU STREQUAL "hip")
     set(GGML_HIP ON CACHE BOOL "" FORCE)
 elseif(SOTTO_GPU STREQUAL "cuda")

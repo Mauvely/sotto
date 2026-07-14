@@ -97,18 +97,15 @@ void OverlayController::applyScreenSetting()
 #ifdef SOTTO_HAVE_LAYER_SHELL
     if (m_usingLayerShell) {
         auto *ls = LayerShellQt::Window::get(m_window);
-        QT_WARNING_PUSH
-        QT_WARNING_DISABLE_DEPRECATED
         if (wanted == QStringLiteral("auto")) {
-            // Null output: KWin and Hyprland place the surface on the
+            // No fixed screen: KWin and Hyprland place the surface on the
             // active monitor. Re-evaluated on every show since hiding
             // destroys the wl surface.
-            ls->setScreenConfiguration(LayerShellQt::Window::ScreenFromCompositor);
+            ls->setWantsToBeOnActiveScreen(true);
         } else if (QScreen *s = screenByName(wanted)) {
-            ls->setScreenConfiguration(LayerShellQt::Window::ScreenFromQWindow);
+            ls->setWantsToBeOnActiveScreen(false);
             m_window->setScreen(s);
         }
-        QT_WARNING_POP
         return;
     }
 #endif

@@ -105,6 +105,29 @@ void call(const QString &interface, const QString &method, QVariantList args,
                      });
 }
 
+void registerHostApp(const QString &appId)
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(
+        kService, kPath, QStringLiteral("org.freedesktop.host.portal.Registry"),
+        QStringLiteral("Register"));
+    msg << appId << QVariantMap();
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(msg));
+    QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher,
+                     [watcher](QDBusPendingCallWatcher *w) {
+                         QDBusPendingReply<> reply = *w;
+                         w->deleteLater();
+                         if (reply.isError()) {
+                             // Portals predating 1.20 don't have this interface at
+                             // all; that's fine, GlobalShortcuts et al. simply
+                             // won't enforce an app id there.
+                             qDebug() << "host portal Register() failed (harmless on"
+                                         " portal < 1.20):" << reply.error().message();
+                         }
+                     });
+}
+
 void closeSession(const QString &sessionHandle)
 {
     if (sessionHandle.isEmpty())
