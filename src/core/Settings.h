@@ -30,6 +30,7 @@ class Settings : public QObject
 
     // Appearance
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY animationsEnabledChanged)
+    Q_PROPERTY(bool overlayTranslucent READ overlayTranslucent WRITE setOverlayTranslucent NOTIFY overlayTranslucentChanged)
     Q_PROPERTY(QString overlayScreen READ overlayScreen WRITE setOverlayScreen NOTIFY overlayScreenChanged) // "auto" or a QScreen name
 
     // Audio
@@ -65,6 +66,8 @@ public:
 
     bool animationsEnabled() const;
     void setAnimationsEnabled(bool v);
+    bool overlayTranslucent() const;
+    void setOverlayTranslucent(bool v);
     QString overlayScreen() const;
     void setOverlayScreen(const QString &v);
 
@@ -100,6 +103,7 @@ signals:
     void paragraphPauseSecChanged();
     void voiceCommandsChanged();
     void animationsEnabledChanged();
+    void overlayTranslucentChanged();
     void overlayScreenChanged();
     void audioDeviceChanged();
     void launchAtLoginChanged();

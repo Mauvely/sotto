@@ -33,6 +33,7 @@ public slots:
 private:
     void configureLayerShell();
     void positionFallback();
+    void applyBlurBehind();
 
     QQmlEngine *m_engine;
     Settings *m_settings;

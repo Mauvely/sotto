@@ -13,6 +13,10 @@
 #include <LayerShellQt/window.h>
 #endif
 
+#ifdef SOTTO_HAVE_KWINDOWSYSTEM
+#include <KWindowEffects>
+#endif
+
 namespace {
 constexpr int kBottomMargin = 32;
 
@@ -70,7 +74,36 @@ bool OverlayController::initialize()
 
     connect(m_settings, &Settings::overlayScreenChanged, this, &OverlayController::applyScreenSetting);
     applyScreenSetting();
+
+    // Hiding destroys the wl surface, so the blur region has to be
+    // re-requested on every show.
+    connect(m_window, &QWindow::visibleChanged, this, [this](bool visible) {
+        if (visible)
+            applyBlurBehind();
+    });
+    connect(m_settings, &Settings::overlayTranslucentChanged, this,
+            &OverlayController::applyBlurBehind);
     return true;
+}
+
+void OverlayController::applyBlurBehind()
+{
+#ifdef SOTTO_HAVE_KWINDOWSYSTEM
+    if (!m_window)
+        return;
+    // Blur only the pill's capsule shape; a full-window region would show
+    // blurred rectangles poking out of the rounded corners.
+    QRegion region;
+    if (m_settings->overlayTranslucent()) {
+        const int w = m_window->width();
+        const int h = m_window->height();
+        const int r = h / 2;
+        region = QRegion(r, 0, w - 2 * r, h);
+        region += QRegion(0, 0, 2 * r, h, QRegion::Ellipse);
+        region += QRegion(w - 2 * r, 0, 2 * r, h, QRegion::Ellipse);
+    }
+    KWindowEffects::enableBlurBehind(m_window, m_settings->overlayTranslucent(), region);
+#endif
 }
 
 void OverlayController::configureLayerShell()

@@ -16,6 +16,7 @@ const QString kRestoreClipboard = QStringLiteral("output/restoreClipboard");
 const QString kParagraphPause = QStringLiteral("format/paragraphPauseSec");
 const QString kVoiceCommands = QStringLiteral("format/voiceCommands");
 const QString kAnimations = QStringLiteral("appearance/animations");
+const QString kOverlayTranslucent = QStringLiteral("appearance/overlayTranslucent");
 const QString kOverlayScreen = QStringLiteral("appearance/overlayScreen");
 const QString kAudioDevice = QStringLiteral("audio/inputDevice");
 const QString kSilenceMs = QStringLiteral("tuning/silenceMs");
@@ -125,6 +126,15 @@ void Settings::setAnimationsEnabled(bool v)
         return;
     m_s.setValue(kAnimations, v);
     emit animationsEnabledChanged();
+}
+
+bool Settings::overlayTranslucent() const { return m_s.value(kOverlayTranslucent, false).toBool(); }
+void Settings::setOverlayTranslucent(bool v)
+{
+    if (overlayTranslucent() == v)
+        return;
+    m_s.setValue(kOverlayTranslucent, v);
+    emit overlayTranslucentChanged();
 }
 
 QString Settings::overlayScreen() const { return m_s.value(kOverlayScreen, QStringLiteral("auto")).toString(); }

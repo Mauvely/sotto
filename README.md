@@ -18,7 +18,7 @@ the only network access Sotto ever performs is downloading a speech model when
 - 📥 Text is inserted into the focused app (clipboard+paste or ydotool), or
   copied to the clipboard, or dictated into a built-in notepad window
 - ⚙️ Settings UI: model download manager, shortcut, microphone, output method,
-  animations toggle, monitor selection
+  animations toggle, translucency (compositor blur), monitor selection
 - 🖥️ Designed for **KDE Plasma (KWin) on Wayland** first; the overlay uses
   wlr-layer-shell so it is never focusable and never tiled — Hyprland & friends
   are on the roadmap
@@ -127,6 +127,18 @@ sudo systemctl enable --now ydotool   # or run `ydotoold` as your user service
 
 Terminals usually paste with **Ctrl+Shift+V** — use "Clipboard only" or ydotool
 typing there.
+
+### Translucency & compositor blur
+
+*Settings → Appearance → Translucent popup background* lowers the pill's
+opacity so your compositor's blur can shine through:
+
+- **KWin**: build with `kwindowsystem` installed and Sotto requests
+  blur-behind itself — just flip the switch.
+- **Hyprland**: add `layerrule = blur, sotto-hud` (the HUD's layer-shell
+  namespace is `sotto-hud`; combine with `ignorealpha` to taste).
+- **Windows (planned)**: the same switch will map to Mica/acrylic once the
+  Windows port lands.
 
 ### Dictating without inserting
 

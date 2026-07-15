@@ -51,6 +51,17 @@ if(SOTTO_LAYER_SHELL)
 endif()
 
 # ---------------------------------------------------------------------------
+# KWindowSystem (optional): real blur-behind on KWin when the HUD is
+# translucent. Present on Arch as `kwindowsystem`.
+# ---------------------------------------------------------------------------
+set(SOTTO_HAVE_KWINDOWSYSTEM OFF)
+find_package(KF6WindowSystem QUIET)
+if(KF6WindowSystem_FOUND)
+    set(SOTTO_HAVE_KWINDOWSYSTEM ON)
+    message(STATUS "KF6WindowSystem found: translucent HUD can request KWin blur-behind")
+endif()
+
+# ---------------------------------------------------------------------------
 # whisper.cpp (pinned; fetched at configure time)
 # ---------------------------------------------------------------------------
 include(FetchContent)
@@ -148,6 +159,11 @@ target_compile_definitions(sotto PRIVATE
 if(SOTTO_HAVE_LAYER_SHELL)
     target_link_libraries(sotto PRIVATE LayerShellQt::Interface)
     target_compile_definitions(sotto PRIVATE SOTTO_HAVE_LAYER_SHELL)
+endif()
+
+if(SOTTO_HAVE_KWINDOWSYSTEM)
+    target_link_libraries(sotto PRIVATE KF6::WindowSystem)
+    target_compile_definitions(sotto PRIVATE SOTTO_HAVE_KWINDOWSYSTEM)
 endif()
 
 # ---------------------------------------------------------------------------
