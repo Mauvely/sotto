@@ -40,6 +40,7 @@ class App : public QObject
     Q_PROPERTY(QString injectionDiagnostics READ injectionDiagnostics NOTIFY injectionDiagnosticsChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString gpuBackend READ gpuBackend CONSTANT)
+    Q_PROPERTY(bool blurAvailable READ blurAvailable CONSTANT)
 
 public:
     enum class State { Idle, Loading, Listening, Finalizing, Inserting };
@@ -63,6 +64,14 @@ public:
     QString injectionDiagnostics() const;
     QString version() const { return QStringLiteral(SOTTO_VERSION); }
     QString gpuBackend() const { return QStringLiteral(SOTTO_GPU_BACKEND); }
+    bool blurAvailable() const
+    {
+#ifdef SOTTO_HAVE_KWINDOWSYSTEM
+        return true;
+#else
+        return false;
+#endif
+    }
 
 public slots:
     // D-Bus / CLI / tray entry points

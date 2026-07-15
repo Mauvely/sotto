@@ -331,6 +331,20 @@ Window {
                     onToggled: Config.animationsEnabled = checked
                 }
 
+                Switch {
+                    text: qsTr("Translucent popup background")
+                    checked: Config.overlayTranslucent
+                    onToggled: Config.overlayTranslucent = checked
+                }
+
+                SLabel {
+                    visible: Config.overlayTranslucent
+                    text: qsTr("Lets your compositor blur through the popup. KWin blurs it "
+                               + "automatically%1; on Hyprland add "
+                               + "`layerrule = blur, sotto-hud` to your config.")
+                               .arg(App.blurAvailable ? "" : qsTr(" (rebuild with KWindowSystem installed)"))
+                }
+
                 RowLayout {
                     spacing: 10
                     Text { text: qsTr("Show the popup on"); color: "#F2F2F2"; font.pixelSize: 13 }

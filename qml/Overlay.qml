@@ -38,9 +38,12 @@ Window {
         id: pill
         anchors.fill: parent
         radius: height / 2
-        color: Qt.rgba(0, 0, 0, 0.93)
+        // Translucent mode leaves enough alpha for compositor blur (KWin
+        // blur-behind, Hyprland `layerrule = blur, sotto-hud`, Mica once
+        // Windows support lands) to show through.
+        color: Qt.rgba(0, 0, 0, Config.overlayTranslucent ? 0.55 : 0.93)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.10)
+        border.color: Qt.rgba(1, 1, 1, Config.overlayTranslucent ? 0.16 : 0.10)
         opacity: 0
         scale: 0.97
 
