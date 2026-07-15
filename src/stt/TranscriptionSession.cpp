@@ -17,6 +17,10 @@ TextFormatter::Options TranscriptionSession::formatOptions() const
 {
     TextFormatter::Options o;
     o.voiceCommands = m_settings->voiceCommands();
+    o.cmdNewLine = m_settings->voiceCmdNewLine();
+    o.cmdNewParagraph = m_settings->voiceCmdNewParagraph();
+    o.cmdDeleteLastLine = m_settings->voiceCmdDeleteLastLine();
+    o.cmdDeleteLastSentence = m_settings->voiceCmdDeleteLastSentence();
     o.paragraphPauseSec = m_settings->paragraphPauseSec();
     return o;
 }

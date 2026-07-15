@@ -134,10 +134,19 @@ Whisper already produces punctuation and capitalisation. On top of that Sotto:
 
 - inserts a **paragraph break when you pause** longer than a threshold
   (default 2 s, tunable in Settings),
-- understands **"new line"** and **"new paragraph"** (toggleable — mind false
-  positives like "a new line of products"),
+- understands voice commands, each individually toggleable in Settings —
+  mind false positives like "a new line of products":
+  - **"new line"** / **"new paragraph"** insert a break,
+  - **"delete last line"** / **"delete last sentence"** (also
+    remove/scratch/erase) undo the words you just said, within the current
+    dictation,
 - strips non-speech artifacts (`[BLANK_AUDIO]`, "(laughs)", ♪),
 - normalises spacing and sentence capitalisation across utterances.
+
+Voice commands are plain text matching on the transcript — Whisper itself has
+no command mode — so they work in every language Whisper transcribes the
+English phrase in, and the delete commands can only edit text from the
+dictation still in progress, not text already inserted into an app.
 
 ## Privacy
 

@@ -15,6 +15,10 @@ const QString kInjectionMode = QStringLiteral("output/injectionMode");
 const QString kRestoreClipboard = QStringLiteral("output/restoreClipboard");
 const QString kParagraphPause = QStringLiteral("format/paragraphPauseSec");
 const QString kVoiceCommands = QStringLiteral("format/voiceCommands");
+const QString kVoiceCmdNewLine = QStringLiteral("format/voiceCmdNewLine");
+const QString kVoiceCmdNewParagraph = QStringLiteral("format/voiceCmdNewParagraph");
+const QString kVoiceCmdDeleteLastLine = QStringLiteral("format/voiceCmdDeleteLastLine");
+const QString kVoiceCmdDeleteLastSentence = QStringLiteral("format/voiceCmdDeleteLastSentence");
 const QString kAnimations = QStringLiteral("appearance/animations");
 const QString kOverlayTranslucent = QStringLiteral("appearance/overlayTranslucent");
 const QString kOverlayScreen = QStringLiteral("appearance/overlayScreen");
@@ -117,6 +121,42 @@ void Settings::setVoiceCommands(bool v)
         return;
     m_s.setValue(kVoiceCommands, v);
     emit voiceCommandsChanged();
+}
+
+bool Settings::voiceCmdNewLine() const { return m_s.value(kVoiceCmdNewLine, true).toBool(); }
+void Settings::setVoiceCmdNewLine(bool v)
+{
+    if (voiceCmdNewLine() == v)
+        return;
+    m_s.setValue(kVoiceCmdNewLine, v);
+    emit voiceCmdNewLineChanged();
+}
+
+bool Settings::voiceCmdNewParagraph() const { return m_s.value(kVoiceCmdNewParagraph, true).toBool(); }
+void Settings::setVoiceCmdNewParagraph(bool v)
+{
+    if (voiceCmdNewParagraph() == v)
+        return;
+    m_s.setValue(kVoiceCmdNewParagraph, v);
+    emit voiceCmdNewParagraphChanged();
+}
+
+bool Settings::voiceCmdDeleteLastLine() const { return m_s.value(kVoiceCmdDeleteLastLine, true).toBool(); }
+void Settings::setVoiceCmdDeleteLastLine(bool v)
+{
+    if (voiceCmdDeleteLastLine() == v)
+        return;
+    m_s.setValue(kVoiceCmdDeleteLastLine, v);
+    emit voiceCmdDeleteLastLineChanged();
+}
+
+bool Settings::voiceCmdDeleteLastSentence() const { return m_s.value(kVoiceCmdDeleteLastSentence, true).toBool(); }
+void Settings::setVoiceCmdDeleteLastSentence(bool v)
+{
+    if (voiceCmdDeleteLastSentence() == v)
+        return;
+    m_s.setValue(kVoiceCmdDeleteLastSentence, v);
+    emit voiceCmdDeleteLastSentenceChanged();
 }
 
 bool Settings::animationsEnabled() const { return m_s.value(kAnimations, true).toBool(); }
