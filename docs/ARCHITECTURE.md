@@ -97,6 +97,7 @@ All `Behavior`/animations are gated on `Config.animationsEnabled`.
 | GNOME | Layer-shell is not supported → fallback window path or a GNOME shell extension; portals all work. |
 | Windows | **Ported** (untested on real hardware): WASAPI capture via Qt Multimedia (unchanged), `WinHotkey`, `SendInput` injection, fallback overlay window, `QLocalServer` single instance, tray-balloon notifications, registry autostart. Open: Mica/acrylic for the translucent HUD, installer. |
 | CUDA / Vulkan | Build-time only: `-DSOTTO_GPU=cuda|vulkan`. |
+| Android (idea) | whisper.cpp + the STT/formatting core port cleanly; everything else changes — dictation would live in an IME (keyboard app), not an overlay + injector. Noted on the roadmap, not started. |
 
 ## Deliberate v1 simplifications
 

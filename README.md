@@ -236,6 +236,8 @@ The `LOCAL` badge on the popup is a constant reminder of that promise.
 - Streaming decode with whisper.cpp's built-in Silero VAD
 - Windows polish: real-hardware testing, Mica/acrylic behind the translucent
   HUD, an installer
+- Android: whisper.cpp runs well on modern phones — a keyboard-style (IME)
+  dictation app sharing the STT/formatting core is worth exploring
 - maybe macOS
 
 ## License
