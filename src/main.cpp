@@ -21,6 +21,7 @@ void printHelp()
               "  --stop        stop dictation in the running instance\n"
               "  --settings    open the settings window\n"
               "  --notepad     open the notepad window\n"
+              "  --chat        open the chat window\n"
               "  --quit        quit the running instance\n"
               "  --version     print the version and exit\n"
               "  --help        this text\n"
@@ -67,6 +68,8 @@ int main(int argc, char *argv[])
             method = QStringLiteral("Stop");
         else if (args.contains(QStringLiteral("--notepad")))
             method = QStringLiteral("ShowNotepad");
+        else if (args.contains(QStringLiteral("--chat")))
+            method = QStringLiteral("ShowChat");
         else if (args.contains(QStringLiteral("--quit")))
             method = QStringLiteral("Quit");
         SingleInstance::forwardToRunning(method);
@@ -79,6 +82,8 @@ int main(int argc, char *argv[])
         sotto.showSettings();
     else if (args.contains(QStringLiteral("--notepad")))
         sotto.showNotepad();
+    else if (args.contains(QStringLiteral("--chat")))
+        sotto.showChat();
     else if (args.contains(QStringLiteral("--toggle")))
         QMetaObject::invokeMethod(&sotto, &App::toggle, Qt::QueuedConnection);
     else if (settings.firstRun()) {

@@ -37,6 +37,8 @@ bool SingleInstance::registerPrimary()
                     m_app->showSettings();
                 else if (method == QStringLiteral("ShowNotepad"))
                     m_app->showNotepad();
+                else if (method == QStringLiteral("ShowChat"))
+                    m_app->showChat();
                 else if (method == QStringLiteral("Quit"))
                     m_app->quit();
                 sock->disconnectFromServer();

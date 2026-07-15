@@ -36,9 +36,11 @@ class App : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString state READ stateName NOTIFY stateChanged)
+    Q_PROPERTY(QString dictationTarget READ dictationTargetName NOTIFY stateChanged)
     Q_PROPERTY(QString partialText READ partialText NOTIFY partialTextChanged)
     Q_PROPERTY(QVariantList levels READ levels NOTIFY levelsChanged)
     Q_PROPERTY(QString notepadText READ notepadText WRITE setNotepadText NOTIFY notepadTextChanged)
+    Q_PROPERTY(QVariantList chatEntries READ chatEntries NOTIFY chatEntriesChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString boundShortcut READ boundShortcut NOTIFY boundShortcutChanged)
     Q_PROPERTY(QString systemInfo READ systemInfo NOTIFY systemInfoChanged)
@@ -51,7 +53,7 @@ class App : public QObject
 
 public:
     enum class State { Idle, Loading, Listening, Finalizing, Inserting };
-    enum class Target { Inject, Notepad };
+    enum class Target { Inject, Notepad, Chat };
 
     explicit App(Settings *settings, QObject *parent = nullptr);
     ~App() override;
@@ -59,8 +61,10 @@ public:
     void initialize();
 
     QString stateName() const;
+    QString dictationTargetName() const;
     QString partialText() const { return m_partialText; }
     QVariantList levels() const;
+    QVariantList chatEntries() const { return m_chatEntries; }
     QString notepadText() const { return m_notepadText; }
     void setNotepadText(const QString &t);
     QString lastError() const { return m_lastError; }
@@ -86,11 +90,14 @@ public slots:
     void stopDictation();
     void showSettings();
     void showNotepad();
+    void showChat();
     void quit();
 
     // QML entry points
     void startDictation(int target = 0); // Target enum as int for QML
     void toggleNotepadDictation();
+    void toggleChatDictation();
+    void clearChat();
     void applyShortcutSettings();
     void copyToClipboard(const QString &text);
     void refreshAudioDevices();
@@ -100,6 +107,7 @@ signals:
     void partialTextChanged();
     void levelsChanged();
     void notepadTextChanged();
+    void chatEntriesChanged();
     void lastErrorChanged();
     void boundShortcutChanged();
     void systemInfoChanged();
@@ -134,6 +142,7 @@ private:
 
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_notepadWindow;
+    QPointer<QQuickWindow> m_chatWindow;
 
     State m_state = State::Idle;
     Target m_target = Target::Inject;
@@ -141,6 +150,7 @@ private:
     QString m_loadedModelId;
     QString m_partialText;
     QString m_notepadText;
+    QVariantList m_chatEntries; // session-only on purpose: transcripts never touch disk
     QString m_lastError;
     QString m_systemInfo;
     QVector<float> m_levels;

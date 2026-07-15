@@ -30,4 +30,5 @@ void DBusService::Toggle() { m_app->toggle(); }
 void DBusService::Stop() { m_app->stopDictation(); }
 void DBusService::ShowSettings() { m_app->showSettings(); }
 void DBusService::ShowNotepad() { m_app->showNotepad(); }
+void DBusService::ShowChat() { m_app->showChat(); }
 void DBusService::Quit() { m_app->quit(); }

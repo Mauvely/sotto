@@ -16,6 +16,7 @@ TrayIcon::TrayIcon(App *app, QObject *parent)
 
     m_toggleAction = menu->addAction(tr("Start dictation"), m_app, &App::toggle);
     menu->addAction(tr("Notepad"), m_app, &App::showNotepad);
+    menu->addAction(tr("Chat"), m_app, &App::showChat);
     menu->addAction(tr("Settings…"), m_app, &App::showSettings);
     menu->addSeparator();
     auto *local = menu->addAction(tr("100% local — nothing leaves this device"));

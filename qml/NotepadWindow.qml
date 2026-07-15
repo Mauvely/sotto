@@ -94,7 +94,10 @@ Window {
             }
 
             VisualizerBars {
-                visible: win.recording
+                // opacity, not visible: toggling visibility of a layout
+                // child mid-flight confuses Qt 6.4's RowLayout, and keeping
+                // the slot reserved avoids reflow when recording starts.
+                opacity: win.recording ? 1 : 0
                 Layout.preferredWidth: 90
                 Layout.preferredHeight: 26
                 levels: App.levels

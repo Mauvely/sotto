@@ -15,7 +15,8 @@ Wayland) first, with an experimental Windows port.
   plus paragraph breaks when you pause, and "new line" / "new paragraph" voice
   commands
 - 📥 Text is inserted into the focused app (clipboard+paste or ydotool), or
-  copied to the clipboard, or dictated into a built-in notepad window
+  copied to the clipboard, or dictated into a built-in notepad or chat-style
+  transcript window
 - ⚙️ Settings UI: model download manager, shortcut, microphone, output method,
   animations toggle, translucency (compositor blur), monitor selection
 - 🖥️ Designed for **KDE Plasma (KWin) on Wayland** first; the overlay uses
@@ -145,17 +146,24 @@ opacity so your compositor's blur can shine through:
 Open the **Notepad** (tray menu or `sotto --notepad`), press *Record*, and the
 formatted text accumulates in the window with a Copy button.
 
+Or open the **Chat** window (tray menu or `sotto --chat`) for a
+conversation-style view: press *Record*, speak, and each dictation comes back
+as a timestamped transcript bubble you can select or copy individually.
+Transcripts stay in memory and vanish when Sotto quits — nothing is written
+to disk.
+
 ### CLI / scripting
 
 ```
 sotto --toggle     # start/stop dictation (bind this to any compositor shortcut)
 sotto --settings   # open settings
 sotto --notepad    # open the notepad
+sotto --chat       # open the chat window
 sotto --quit
 ```
 
 A running instance is controlled over D-Bus (`io.github.timurinal.Sotto` at
-`/Sotto`): `Toggle`, `Stop`, `ShowSettings`, `ShowNotepad`, `Quit`.
+`/Sotto`): `Toggle`, `Stop`, `ShowSettings`, `ShowNotepad`, `ShowChat`, `Quit`.
 
 ## Formatting
 

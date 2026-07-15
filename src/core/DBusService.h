@@ -29,6 +29,7 @@ public slots:
     Q_SCRIPTABLE void Stop();
     Q_SCRIPTABLE void ShowSettings();
     Q_SCRIPTABLE void ShowNotepad();
+    Q_SCRIPTABLE void ShowChat();
     Q_SCRIPTABLE void Quit();
 
 private:

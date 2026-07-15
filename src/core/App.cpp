@@ -13,6 +13,7 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -136,6 +137,16 @@ QString App::stateName() const
     return QStringLiteral("idle");
 }
 
+QString App::dictationTargetName() const
+{
+    switch (m_target) {
+    case Target::Inject: return QStringLiteral("inject");
+    case Target::Notepad: return QStringLiteral("notepad");
+    case Target::Chat: return QStringLiteral("chat");
+    }
+    return QStringLiteral("inject");
+}
+
 void App::setState(State s)
 {
     if (m_state == s)
@@ -244,6 +255,17 @@ void App::onSessionFinished(const QString &text)
         return;
     }
 
+    if (m_target == Target::Chat) {
+        m_chatEntries.append(QVariantMap{
+            {QStringLiteral("text"), text},
+            {QStringLiteral("time"),
+             QDateTime::currentDateTime().toString(QStringLiteral("hh:mm"))},
+        });
+        emit chatEntriesChanged();
+        setState(State::Idle);
+        return;
+    }
+
     setState(State::Inserting);
     auto *injector = TextInjector::create(m_settings, m_portalRd, this);
     connect(injector, &TextInjector::finished, this,
@@ -304,6 +326,15 @@ void App::showNotepad()
     }
 }
 
+void App::showChat()
+{
+    if (QQuickWindow *w = ensureWindow(m_chatWindow, QStringLiteral("ChatWindow.qml"))) {
+        w->show();
+        w->raise();
+        w->requestActivate();
+    }
+}
+
 void App::quit()
 {
     // Windows must go before the engine (a child of this object) does,
@@ -312,6 +343,7 @@ void App::quit()
         m_overlay->destroyWindow();
     delete m_settingsWindow.data();
     delete m_notepadWindow.data();
+    delete m_chatWindow.data();
     QCoreApplication::quit();
 }
 
@@ -324,6 +356,22 @@ void App::toggleNotepadDictation()
         startDictation(int(Target::Notepad));
     else if (m_state == State::Listening)
         stopDictation();
+}
+
+void App::toggleChatDictation()
+{
+    if (m_state == State::Idle)
+        startDictation(int(Target::Chat));
+    else if (m_state == State::Listening)
+        stopDictation();
+}
+
+void App::clearChat()
+{
+    if (m_chatEntries.isEmpty())
+        return;
+    m_chatEntries.clear();
+    emit chatEntriesChanged();
 }
 
 void App::applyShortcutSettings()

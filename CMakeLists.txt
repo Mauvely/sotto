@@ -143,6 +143,7 @@ qt_add_qml_module(sotto
         qml/Overlay.qml
         qml/SettingsWindow.qml
         qml/NotepadWindow.qml
+        qml/ChatWindow.qml
         qml/LogoMark.qml
         qml/VisualizerBars.qml
         qml/LocalBadge.qml
