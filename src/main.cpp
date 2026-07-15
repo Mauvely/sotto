@@ -1,5 +1,5 @@
 #include "core/App.h"
-#include "core/DBusService.h"
+#include "core/SingleInstance.h"
 #include "core/Settings.h"
 
 #include <QApplication>
@@ -15,7 +15,7 @@ namespace {
 
 void printHelp()
 {
-    std::puts("Sotto " SOTTO_VERSION " — fully local voice dictation for Linux\n"
+    std::puts("Sotto " SOTTO_VERSION " — fully local voice dictation\n"
               "\n"
               "Usage: sotto [option]\n"
               "\n"
@@ -68,11 +68,11 @@ int main(int argc, char *argv[])
 
     const QStringList args = app.arguments().mid(1);
 
-    // Single instance: if the service is taken, forward the action and exit.
+    // Single instance: if the lock is taken, forward the action and exit.
     Settings settings;
     App sotto(&settings);
-    DBusService dbus(&sotto);
-    if (!dbus.registerService()) {
+    SingleInstance instance(&sotto);
+    if (!instance.registerPrimary()) {
         QString method = QStringLiteral("ShowSettings");
         if (args.contains(QStringLiteral("--toggle")))
             method = QStringLiteral("Toggle");
@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
             method = QStringLiteral("ShowNotepad");
         else if (args.contains(QStringLiteral("--quit")))
             method = QStringLiteral("Quit");
-        DBusService::callRunningInstance(method);
+        SingleInstance::forwardToRunning(method);
         return 0;
     }
 

@@ -8,7 +8,6 @@
 #include <QVector>
 
 class AudioCapture;
-class GlobalShortcutsPortal;
 class ModelManager;
 class OverlayController;
 class PortalRemoteDesktop;
@@ -18,6 +17,14 @@ class Settings;
 class TranscriptionSession;
 class TrayIcon;
 class WhisperEngine;
+
+#ifdef Q_OS_WIN
+class WinHotkey;
+using HotkeyBackend = WinHotkey;
+#else
+class GlobalShortcutsPortal;
+using HotkeyBackend = GlobalShortcutsPortal;
+#endif
 
 // Central wiring + dictation state machine:
 //
@@ -122,8 +129,8 @@ private:
     TranscriptionSession *m_session = nullptr;
     WhisperEngine *m_whisper = nullptr;
     QThread m_whisperThread;
-    GlobalShortcutsPortal *m_hotkey = nullptr;
-    PortalRemoteDesktop *m_portalRd = nullptr;
+    HotkeyBackend *m_hotkey = nullptr;
+    PortalRemoteDesktop *m_portalRd = nullptr; // Linux-only; null on Windows
 
     QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_notepadWindow;

@@ -1,6 +1,7 @@
 #include "ui/TrayIcon.h"
 
 #include "core/App.h"
+#include "core/Notifier.h"
 
 #include <QIcon>
 #include <QMenu>
@@ -26,6 +27,7 @@ TrayIcon::TrayIcon(App *app, QObject *parent)
     m_tray->setIcon(QIcon(QStringLiteral(":/icons/sotto.svg")));
     m_tray->setToolTip(QStringLiteral("Sotto — local dictation"));
     m_tray->show();
+    Notifier::setFallbackTray(m_tray);
 
     connect(m_tray, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason r) {
         if (r == QSystemTrayIcon::Trigger)

@@ -1,9 +1,35 @@
 #include "core/Notifier.h"
 
+#ifdef Q_OS_WIN
+
+#include <QPointer>
+#include <QSystemTrayIcon>
+
+namespace {
+QPointer<QSystemTrayIcon> s_tray;
+}
+
+void Notifier::setFallbackTray(QSystemTrayIcon *tray)
+{
+    s_tray = tray;
+}
+
+void Notifier::notify(const QString &summary, const QString &body, int timeoutMs)
+{
+    if (s_tray)
+        s_tray->showMessage(summary, body, QSystemTrayIcon::Information, timeoutMs);
+}
+
+#else // ------------------------------------------------------------- Linux
+
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
 #include <QVariantMap>
+
+void Notifier::setFallbackTray(QSystemTrayIcon *)
+{
+}
 
 void Notifier::notify(const QString &summary, const QString &body, int timeoutMs)
 {
@@ -22,3 +48,5 @@ void Notifier::notify(const QString &summary, const QString &body, int timeoutMs
         << timeoutMs;
     QDBusConnection::sessionBus().asyncCall(msg);
 }
+
+#endif
