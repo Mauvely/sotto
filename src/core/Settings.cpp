@@ -195,6 +195,36 @@ void Settings::setAudioDevice(const QString &v)
     emit audioDeviceChanged();
 }
 
+#ifdef Q_OS_WIN
+
+namespace {
+const QString kRunKey =
+    QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+const QString kRunValue = QStringLiteral("Sotto");
+} // namespace
+
+QString Settings::autostartFilePath() const { return QString(); }
+
+bool Settings::launchAtLogin() const
+{
+    return QSettings(kRunKey, QSettings::NativeFormat).contains(kRunValue);
+}
+void Settings::setLaunchAtLogin(bool v)
+{
+    if (launchAtLogin() == v)
+        return;
+    QSettings run(kRunKey, QSettings::NativeFormat);
+    if (v) {
+        run.setValue(kRunValue, u'"'
+            + QDir::toNativeSeparators(QCoreApplication::applicationFilePath()) + u'"');
+    } else {
+        run.remove(kRunValue);
+    }
+    emit launchAtLoginChanged();
+}
+
+#else // ------------------------------------------------------------- Linux
+
 QString Settings::autostartFilePath() const
 {
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -223,6 +253,8 @@ void Settings::setLaunchAtLogin(bool v)
     }
     emit launchAtLoginChanged();
 }
+
+#endif
 
 int Settings::silenceMs() const { return m_s.value(kSilenceMs, 700).toInt(); }
 int Settings::minUtteranceMs() const { return m_s.value(kMinUtteranceMs, 300).toInt(); }

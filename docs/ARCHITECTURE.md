@@ -36,15 +36,15 @@ flowchart LR
 |---|---|---|
 | State machine & wiring | `src/core/App.*` | `idle → loading → listening → finalizing → inserting → idle`. Exposed to QML as `App`. |
 | Persistent config | `src/core/Settings.*` | QSettings INI; exposed to QML as `Config`. Tuning knobs (`tuning/*`) have no UI on purpose. |
-| Single instance / IPC | `src/core/DBusService.*` | Session-bus name doubles as the single-instance lock. |
+| Single instance / IPC | `src/core/SingleInstance.*` | Facade: wraps `DBusService` on Linux (bus name doubles as the lock, still qdbus-scriptable), a `QLocalServer` pipe on Windows. |
 | Audio | `src/audio/AudioCapture.*` | Any device format → mono float 16 kHz (channel-average + linear resample). Emits `samples` (STT) and `level` (~30 Hz, visualiser). |
 | VAD gate | `src/stt/SpeechGate.h` | Pure header, adaptive noise floor + hangover. Unit-tested. |
 | Segmentation & partials | `src/stt/TranscriptionSession.*` | Sample-clock driven (deterministic). 300 ms pre-roll so first words aren't clipped; silence > `silenceMs` commits an utterance; a partial decode of the in-progress utterance is requested every `partialIntervalMs`; the pause length between utterances is recorded for the formatter. |
 | Whisper | `src/stt/WhisperEngine.*` | Worker `QThread`; queued slots serialize decodes. Partials decode greedy/no-fallback; finals get temperature fallback. Previously committed text is passed as `initial_prompt` for cross-utterance consistency. |
 | Models | `src/stt/ModelManager.*` | Catalog + downloader (HF whisper.cpp repo) with progress, ggml magic validation, `.part` staging. |
 | Formatting | `src/format/TextFormatter.*` | Pure functions, unit-tested. Artifact stripping, voice commands, pause-based paragraphs, punctuation/capitalisation normalisation. |
-| Injection | `src/inject/*` | Strategy interface, see README table. `PortalRemoteDesktop` holds a persistent portal session (restore token in config) so the permission prompt appears once. |
-| Hotkey | `src/hotkey/GlobalShortcutsPortal.*` | Portal session + `BindShortcuts`; `Activated`/`Deactivated` support toggle and hold-to-talk. |
+| Injection | `src/inject/*` | Strategy interface, see README table. `PortalRemoteDesktop` holds a persistent portal session (restore token in config) so the permission prompt appears once. On Windows the paste keystroke and the type-it strategy go through `SendInput`. |
+| Hotkey | `src/hotkey/*` | `HotkeyBackend` alias: `GlobalShortcutsPortal` (portal session + `BindShortcuts`) on Linux, `WinHotkey` (`RegisterHotKey` + release polling) on Windows. Both emit `activated`/`deactivated` for toggle and hold-to-talk. |
 | Portal plumbing | `src/portal/PortalRequest.*` | The Request/Response dance shared by hotkey + remote desktop. |
 | Overlay | `src/ui/OverlayController.*`, `qml/Overlay.qml` | See below. |
 | Tray | `src/ui/TrayIcon.*` | SNI via QSystemTrayIcon. |
@@ -95,7 +95,7 @@ on `Config.animationsEnabled`.
 |---|---|
 | Hyprland / wlroots | Nothing in the overlay (layer-shell already). Add a `wtype` injector (wlroots implements virtual-keyboard); GlobalShortcuts portal exists via `xdg-desktop-portal-hyprland`, plus `sotto --toggle` for `bind = ...` users. Optional Quickshell HUD could replace the QML overlay via the same D-Bus surface. |
 | GNOME | Layer-shell is not supported → fallback window path or a GNOME shell extension; portals all work. |
-| Windows | Replace: AudioCapture (WASAPI via Qt Multimedia — already abstract), hotkey (`RegisterHotKey`), injection (`SendInput`), overlay (borderless topmost window — the fallback path already models this). whisper.cpp: CUDA/Vulkan. |
+| Windows | **Ported** (untested on real hardware): WASAPI capture via Qt Multimedia (unchanged), `WinHotkey`, `SendInput` injection, fallback overlay window, `QLocalServer` single instance, tray-balloon notifications, registry autostart. Open: Mica/acrylic for the translucent HUD, installer. |
 | CUDA / Vulkan | Build-time only: `-DSOTTO_GPU=cuda|vulkan`. |
 
 ## Deliberate v1 simplifications

@@ -11,6 +11,8 @@ Window {
     title: qsTr("Sotto — Settings")
     color: "#0D0D0F"
 
+    readonly property bool isWindows: Qt.platform.os === "windows"
+
     palette {
         window: "#0D0D0F"
         windowText: "#F2F2F2"
@@ -210,9 +212,11 @@ Window {
                 SLabel {
                     text: App.boundShortcut.length > 0
                           ? qsTr("Currently bound: %1").arg(App.boundShortcut)
-                          : qsTr("Not bound yet. LOGO = the Super/Meta key. The binding can also "
-                                 + "be changed any time in Plasma System Settings → Shortcuts, or "
-                                 + "bind `sotto --toggle` to any compositor shortcut instead.")
+                          : win.isWindows
+                            ? qsTr("Not bound yet. LOGO = the Windows key.")
+                            : qsTr("Not bound yet. LOGO = the Super/Meta key. The binding can also "
+                                   + "be changed any time in Plasma System Settings → Shortcuts, or "
+                                   + "bind `sotto --toggle` to any compositor shortcut instead.")
                 }
 
                 RowLayout {
@@ -267,10 +271,14 @@ Window {
                         implicitWidth: 260
                         textRole: "name"
                         valueRole: "value"
+                        // The "ydotool-type" value is what sotto.conf stores
+                        // for "type it" on every platform; only the label
+                        // names the platform's typing backend.
                         model: [
                             { name: qsTr("Auto (recommended)"), value: "auto" },
                             { name: qsTr("Clipboard + paste keystroke"), value: "clipboard-paste" },
-                            { name: qsTr("Type it (ydotool)"), value: "ydotool-type" },
+                            { name: win.isWindows ? qsTr("Type it (simulated keystrokes)")
+                                                  : qsTr("Type it (ydotool)"), value: "ydotool-type" },
                             { name: qsTr("Clipboard only"), value: "clipboard-only" }
                         ]
                         Component.onCompleted: currentIndex = Math.max(0, indexOfValue(Config.injectionMode))

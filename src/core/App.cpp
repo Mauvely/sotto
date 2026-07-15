@@ -3,10 +3,8 @@
 #include "audio/AudioCapture.h"
 #include "core/Notifier.h"
 #include "core/Settings.h"
-#include "hotkey/GlobalShortcutsPortal.h"
-#include "inject/PortalRemoteDesktop.h"
+#include "hotkey/HotkeyBackend.h"
 #include "inject/TextInjector.h"
-#include "portal/PortalRequest.h"
 #include "stt/ModelManager.h"
 #include "stt/TranscriptionSession.h"
 #include "stt/WhisperEngine.h"
@@ -21,6 +19,11 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
+
+#ifndef Q_OS_WIN
+#include "inject/PortalRemoteDesktop.h"
+#include "portal/PortalRequest.h"
+#endif
 
 namespace {
 constexpr int kLevelBars = 22;
@@ -43,15 +46,19 @@ App::~App()
 
 void App::initialize()
 {
+#ifndef Q_OS_WIN
     // Portals >= 1.20 require unsandboxed apps to self-report an app id
     // before using identity-sensitive interfaces like GlobalShortcuts.
     // Must happen before GlobalShortcutsPortal/PortalRemoteDesktop below.
     Portal::registerHostApp(QStringLiteral("io.github.timurinal.sotto"));
+#endif
 
     m_models = new ModelManager(this);
     m_capture = new AudioCapture(this);
     m_session = new TranscriptionSession(m_settings, this);
+#ifndef Q_OS_WIN
     m_portalRd = new PortalRemoteDesktop(m_settings, this);
+#endif
 
     // Whisper worker thread.
     m_whisper = new WhisperEngine;
@@ -91,9 +98,9 @@ void App::initialize()
 
     m_tray = new TrayIcon(this, this);
 
-    // Global shortcut via the portal.
-    m_hotkey = new GlobalShortcutsPortal(this);
-    connect(m_hotkey, &GlobalShortcutsPortal::activated, this, [this] {
+    // Global shortcut (portal on Linux, RegisterHotKey on Windows).
+    m_hotkey = new HotkeyBackend(this);
+    connect(m_hotkey, &HotkeyBackend::activated, this, [this] {
         if (m_settings->hotkeyMode() == QStringLiteral("hold")) {
             if (m_state == State::Idle)
                 startDictation(int(Target::Inject));
@@ -101,12 +108,12 @@ void App::initialize()
             toggle();
         }
     });
-    connect(m_hotkey, &GlobalShortcutsPortal::deactivated, this, [this] {
+    connect(m_hotkey, &HotkeyBackend::deactivated, this, [this] {
         if (m_settings->hotkeyMode() == QStringLiteral("hold"))
             stopDictation();
     });
-    connect(m_hotkey, &GlobalShortcutsPortal::boundChanged, this, &App::boundShortcutChanged);
-    connect(m_hotkey, &GlobalShortcutsPortal::failed, this, [this](const QString &msg) {
+    connect(m_hotkey, &HotkeyBackend::boundChanged, this, &App::boundShortcutChanged);
+    connect(m_hotkey, &HotkeyBackend::failed, this, [this](const QString &msg) {
         setError(msg);
     });
     applyShortcutSettings();
@@ -327,7 +334,7 @@ void App::applyShortcutSettings()
         m_hotkey->release();
         return;
     }
-    if (!GlobalShortcutsPortal::available()) {
+    if (!HotkeyBackend::available()) {
         setError(tr("The GlobalShortcuts portal is not available; use the tray icon or "
                     "`sotto --toggle` bound to a compositor shortcut instead."));
         return;

@@ -1,10 +1,11 @@
 # Sotto
 
-**Fully local voice dictation for Linux.** Press a global shortcut, speak, and the
+**Fully local voice dictation.** Press a global shortcut, speak, and the
 formatted text lands in whatever app has focus — like Whispr Flow, but every last
-sample is processed **on your machine**. No accounts, no cloud, no telemetry:
-the only network access Sotto ever performs is downloading a speech model when
-*you* ask it to.
+sample is processed **on your machine**, with no word-count ceiling. No accounts,
+no cloud, no telemetry: the only network access Sotto ever performs is
+downloading a speech model when *you* ask it to. Built for Linux (KDE Plasma /
+Wayland) first, with an experimental Windows port.
 
 - 🎙️ Global shortcut → a small black pill appears at the bottom of the **active**
   monitor with a live waveform and live transcript
@@ -67,6 +68,33 @@ sudo cmake --install build
 whisper.cpp (pinned release) is fetched at configure time; everything is linked
 statically into the `sotto` binary.
 
+## Windows (experimental)
+
+The Windows port swaps the Linux plumbing for native equivalents — same UI,
+same models, same local-only promise:
+
+| Piece | Windows backend |
+|---|---|
+| Audio capture | WASAPI (via Qt Multimedia — unchanged code) |
+| Global shortcut | `RegisterHotKey` (hold-to-talk supported) |
+| Text insertion | clipboard + Ctrl+V, or typed key-by-key (`SendInput`) |
+| Overlay | frameless always-on-top window (the fallback path) |
+| Single instance / CLI | local socket instead of D-Bus |
+| Launch at login | `HKCU\...\CurrentVersion\Run` |
+
+Build with Visual Studio (or clang-cl), CMake ≥ 3.24, Ninja and Qt 6 for MSVC:
+
+```powershell
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSOTTO_GPU=vulkan `
+      -DCMAKE_PREFIX_PATH=C:\Qt\6.7.0\msvc2019_64
+cmake --build build
+```
+
+`-DSOTTO_GPU=cuda` for NVIDIA, `vulkan` for anything else, `cpu` to keep it
+simple. **Status: builds are untested by CI and the port hasn't had much
+real-hardware time yet — bug reports welcome.** Mica/acrylic blur behind the
+translucent HUD is planned but not wired up.
+
 ## First run
 
 1. **Settings** opens automatically. Download a model — **Large v3 Turbo**
@@ -81,7 +109,8 @@ statically into the `sotto` binary.
 ### How text gets inserted (Wayland realities)
 
 Wayland has no universal "type this" API, so Sotto picks the best available
-strategy (configurable in *Settings → Output*):
+strategy (configurable in *Settings → Output*; on Windows the same choices map
+to `SendInput` and need no setup):
 
 | Mode | What happens | Needs |
 |---|---|---|
@@ -177,7 +206,9 @@ The `LOCAL` badge on the popup is a constant reminder of that promise.
 - KWin fake-input backend (no ydotool needed)
 - Optional local LLM post-processing pass (llama.cpp) for heavier rewriting
 - Streaming decode with whisper.cpp's built-in Silero VAD
-- Windows (WASAPI + SendInput), maybe macOS
+- Windows polish: real-hardware testing, Mica/acrylic behind the translucent
+  HUD, an installer
+- maybe macOS
 
 ## License
 

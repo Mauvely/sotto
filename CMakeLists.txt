@@ -30,15 +30,20 @@ option(SOTTO_BUILD_TESTS "Build unit tests" ON)
 # Qt
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.4 REQUIRED COMPONENTS
-    Core Gui Widgets Qml Quick QuickControls2 Multimedia DBus Network
+    Core Gui Widgets Qml Quick QuickControls2 Multimedia Network
 )
+if(NOT WIN32)
+    # D-Bus carries the portals (hotkey, injection), notifications and the
+    # single-instance IPC; Windows uses native equivalents instead.
+    find_package(Qt6 6.4 REQUIRED COMPONENTS DBus)
+endif()
 qt_standard_project_setup()
 
 # ---------------------------------------------------------------------------
 # LayerShellQt (optional; present on Arch as `layer-shell-qt`)
 # ---------------------------------------------------------------------------
 set(SOTTO_HAVE_LAYER_SHELL OFF)
-if(SOTTO_LAYER_SHELL)
+if(SOTTO_LAYER_SHELL AND NOT WIN32)
     find_package(LayerShellQt QUIET)
     if(LayerShellQt_FOUND)
         set(SOTTO_HAVE_LAYER_SHELL ON)
@@ -98,11 +103,24 @@ FetchContent_MakeAvailable(whisper)
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
+if(WIN32)
+    set(SOTTO_PLATFORM_SOURCES
+        src/hotkey/WinHotkey.h        src/hotkey/WinHotkey.cpp
+    )
+else()
+    set(SOTTO_PLATFORM_SOURCES
+        src/core/DBusService.h        src/core/DBusService.cpp
+        src/inject/PortalRemoteDesktop.h src/inject/PortalRemoteDesktop.cpp
+        src/portal/PortalRequest.h    src/portal/PortalRequest.cpp
+        src/hotkey/GlobalShortcutsPortal.h src/hotkey/GlobalShortcutsPortal.cpp
+    )
+endif()
+
 qt_add_executable(sotto
     src/main.cpp
     src/core/App.h                src/core/App.cpp
     src/core/Settings.h           src/core/Settings.cpp
-    src/core/DBusService.h        src/core/DBusService.cpp
+    src/core/SingleInstance.h     src/core/SingleInstance.cpp
     src/core/Notifier.h           src/core/Notifier.cpp
     src/audio/AudioCapture.h      src/audio/AudioCapture.cpp
     src/stt/SpeechGate.h
@@ -111,11 +129,9 @@ qt_add_executable(sotto
     src/stt/ModelManager.h        src/stt/ModelManager.cpp
     src/format/TextFormatter.h    src/format/TextFormatter.cpp
     src/inject/TextInjector.h     src/inject/TextInjector.cpp
-    src/inject/PortalRemoteDesktop.h src/inject/PortalRemoteDesktop.cpp
-    src/portal/PortalRequest.h    src/portal/PortalRequest.cpp
-    src/hotkey/GlobalShortcutsPortal.h src/hotkey/GlobalShortcutsPortal.cpp
     src/ui/OverlayController.h    src/ui/OverlayController.cpp
     src/ui/TrayIcon.h             src/ui/TrayIcon.cpp
+    ${SOTTO_PLATFORM_SOURCES}
     resources/resources.qrc
 )
 
@@ -137,9 +153,17 @@ qt_add_qml_module(sotto
 target_include_directories(sotto PRIVATE src)
 target_link_libraries(sotto PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2
-    Qt6::Multimedia Qt6::DBus Qt6::Network
+    Qt6::Multimedia Qt6::Network
     whisper
 )
+
+if(WIN32)
+    target_link_libraries(sotto PRIVATE user32)
+    target_compile_definitions(sotto PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    set_target_properties(sotto PROPERTIES WIN32_EXECUTABLE TRUE)
+else()
+    target_link_libraries(sotto PRIVATE Qt6::DBus)
+endif()
 
 target_compile_definitions(sotto PRIVATE
     SOTTO_VERSION="${PROJECT_VERSION}"
@@ -169,8 +193,10 @@ endif()
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 install(TARGETS sotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES packaging/io.github.timurinal.sotto.desktop
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES resources/icons/sotto.svg
-        RENAME io.github.timurinal.sotto.svg
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+if(NOT WIN32)
+    install(FILES packaging/io.github.timurinal.sotto.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES resources/icons/sotto.svg
+            RENAME io.github.timurinal.sotto.svg
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+endif()
