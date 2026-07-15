@@ -98,8 +98,8 @@ Window {
 
             VisualizerBars {
                 visible: win.recording
-                width: 90
-                height: 26
+                Layout.preferredWidth: 90
+                Layout.preferredHeight: 26
                 levels: App.levels
                 animated: Config.animationsEnabled
             }
