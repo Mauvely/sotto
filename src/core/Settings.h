@@ -27,6 +27,10 @@ class Settings : public QObject
     // Formatting
     Q_PROPERTY(double paragraphPauseSec READ paragraphPauseSec WRITE setParagraphPauseSec NOTIFY paragraphPauseSecChanged)
     Q_PROPERTY(bool voiceCommands READ voiceCommands WRITE setVoiceCommands NOTIFY voiceCommandsChanged)
+    Q_PROPERTY(bool voiceCmdNewLine READ voiceCmdNewLine WRITE setVoiceCmdNewLine NOTIFY voiceCmdNewLineChanged)
+    Q_PROPERTY(bool voiceCmdNewParagraph READ voiceCmdNewParagraph WRITE setVoiceCmdNewParagraph NOTIFY voiceCmdNewParagraphChanged)
+    Q_PROPERTY(bool voiceCmdDeleteLastLine READ voiceCmdDeleteLastLine WRITE setVoiceCmdDeleteLastLine NOTIFY voiceCmdDeleteLastLineChanged)
+    Q_PROPERTY(bool voiceCmdDeleteLastSentence READ voiceCmdDeleteLastSentence WRITE setVoiceCmdDeleteLastSentence NOTIFY voiceCmdDeleteLastSentenceChanged)
 
     // Appearance
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY animationsEnabledChanged)
@@ -63,6 +67,14 @@ public:
     void setParagraphPauseSec(double v);
     bool voiceCommands() const;
     void setVoiceCommands(bool v);
+    bool voiceCmdNewLine() const;
+    void setVoiceCmdNewLine(bool v);
+    bool voiceCmdNewParagraph() const;
+    void setVoiceCmdNewParagraph(bool v);
+    bool voiceCmdDeleteLastLine() const;
+    void setVoiceCmdDeleteLastLine(bool v);
+    bool voiceCmdDeleteLastSentence() const;
+    void setVoiceCmdDeleteLastSentence(bool v);
 
     bool animationsEnabled() const;
     void setAnimationsEnabled(bool v);
@@ -102,6 +114,10 @@ signals:
     void restoreClipboardChanged();
     void paragraphPauseSecChanged();
     void voiceCommandsChanged();
+    void voiceCmdNewLineChanged();
+    void voiceCmdNewParagraphChanged();
+    void voiceCmdDeleteLastLineChanged();
+    void voiceCmdDeleteLastSentenceChanged();
     void animationsEnabledChanged();
     void overlayTranslucentChanged();
     void overlayScreenChanged();

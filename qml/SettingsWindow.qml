@@ -321,9 +321,45 @@ Window {
                 title: qsTr("Formatting")
 
                 Switch {
-                    text: qsTr("Voice commands (“new line”, “new paragraph”)")
+                    text: qsTr("Voice commands")
                     checked: Config.voiceCommands
                     onToggled: Config.voiceCommands = checked
+                }
+
+                GridLayout {
+                    columns: 2
+                    columnSpacing: 18
+                    rowSpacing: 0
+                    Layout.leftMargin: 12
+                    enabled: Config.voiceCommands
+
+                    CheckBox {
+                        text: qsTr("“new line”")
+                        checked: Config.voiceCmdNewLine
+                        onToggled: Config.voiceCmdNewLine = checked
+                    }
+                    CheckBox {
+                        text: qsTr("“new paragraph”")
+                        checked: Config.voiceCmdNewParagraph
+                        onToggled: Config.voiceCmdNewParagraph = checked
+                    }
+                    CheckBox {
+                        text: qsTr("“delete last line”")
+                        checked: Config.voiceCmdDeleteLastLine
+                        onToggled: Config.voiceCmdDeleteLastLine = checked
+                    }
+                    CheckBox {
+                        text: qsTr("“delete last sentence”")
+                        checked: Config.voiceCmdDeleteLastSentence
+                        onToggled: Config.voiceCmdDeleteLastSentence = checked
+                    }
+                }
+
+                SLabel {
+                    visible: Config.voiceCommands
+                    text: qsTr("Commands are matched in the transcript, so mind false positives "
+                               + "(“a new line of products”) — disable the ones you don't use. "
+                               + "“delete …” also answers to remove/scratch/erase.")
                 }
 
                 RowLayout {

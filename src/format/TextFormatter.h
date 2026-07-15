@@ -5,9 +5,10 @@
 
 // Turns raw Whisper output into clean written text. Whisper already emits
 // punctuation and capitalisation; this layer strips non-speech artifacts,
-// applies "new line"/"new paragraph" voice commands, inserts paragraph
-// breaks based on how long the speaker paused between utterances, and
-// normalises whitespace/punctuation spacing.
+// applies voice commands ("new line", "new paragraph", "delete last
+// line/sentence" — each individually toggleable), inserts paragraph breaks
+// based on how long the speaker paused between utterances, and normalises
+// whitespace/punctuation spacing.
 //
 // Pure functions, no Qt GUI deps — unit-tested in tests/test_formatter.cpp.
 class TextFormatter
@@ -19,8 +20,12 @@ public:
     };
 
     struct Options {
-        bool voiceCommands = true;      // "new line" / "new paragraph"
-        double paragraphPauseSec = 2.0; // pause length that starts a new paragraph
+        bool voiceCommands = true;         // master switch for all commands
+        bool cmdNewLine = true;            // "new line"
+        bool cmdNewParagraph = true;       // "new paragraph"
+        bool cmdDeleteLastLine = true;     // "delete/remove/scratch last line"
+        bool cmdDeleteLastSentence = true; // "delete/remove/scratch last sentence"
+        double paragraphPauseSec = 2.0;    // pause length that starts a new paragraph
     };
 
     static QString format(const QList<Utterance> &utterances, const Options &opts);
@@ -29,6 +34,9 @@ public:
     // "(laughs)", ♪ …), whitespace-collapsed and trimmed.
     static QString cleanTranscript(QString text);
 
-    // Replaces spoken commands with literal breaks. Exposed for tests.
-    static QString applyVoiceCommands(QString text);
+    // Replaces spoken break commands with literal breaks. The delete
+    // commands are handled in format() because they edit text that has
+    // already been committed. Exposed for tests.
+    static QString applyVoiceCommands(QString text, const Options &opts);
+    static QString applyVoiceCommands(QString text); // all commands enabled
 };

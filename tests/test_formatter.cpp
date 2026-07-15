@@ -93,6 +93,84 @@ private slots:
                  QStringLiteral("A new line of products"));
     }
 
+    void deleteLastSentenceCommand()
+    {
+        QCOMPARE(TextFormatter::format(
+                     {{QStringLiteral("This is great. This is terrible. Delete last sentence."), 0}},
+                     Options{}),
+                 QStringLiteral("This is great."));
+    }
+
+    void deleteLastSentenceAcrossUtterances()
+    {
+        const QString out = TextFormatter::format(
+            {{QStringLiteral("This is great."), 0},
+             {QStringLiteral("This is terrible."), 500},
+             {QStringLiteral("remove the last sentence"), 800},
+             {QStringLiteral("this is better."), 500}},
+            Options{});
+        QCOMPARE(out, QStringLiteral("This is great. This is better."));
+    }
+
+    void deleteLastLineCommand()
+    {
+        QCOMPARE(TextFormatter::format(
+                     {{QStringLiteral("Shopping list new line apples new line oranges delete last line"), 0}},
+                     Options{}),
+                 QStringLiteral("Shopping list\napples"));
+    }
+
+    void deleteLastLineKeepsTheBreak()
+    {
+        // Redoing a line: the deleted line's break survives so the next
+        // words land where the bad line was.
+        const QString out = TextFormatter::format(
+            {{QStringLiteral("Dear John new line I am riding to you"), 0},
+             {QStringLiteral("delete last line I am writing to you"), 600}},
+            Options{});
+        QCOMPARE(out, QStringLiteral("Dear John\nI am writing to you"));
+    }
+
+    void deleteLastLineWithoutBreaksClearsAll()
+    {
+        QCOMPARE(TextFormatter::format(
+                     {{QStringLiteral("just one line of text"), 0},
+                      {QStringLiteral("scratch the last line"), 500}},
+                     Options{}),
+                 QString());
+    }
+
+    void deleteOnEmptyIsSafe()
+    {
+        QCOMPARE(TextFormatter::format({{QStringLiteral("delete last sentence"), 0}}, Options{}),
+                 QString());
+    }
+
+    void deleteCommandsCanBeDisabledIndividually()
+    {
+        Options opts;
+        opts.cmdDeleteLastSentence = false;
+        QCOMPARE(TextFormatter::format({{QStringLiteral("please delete the last sentence"), 0}}, opts),
+                 QStringLiteral("Please delete the last sentence"));
+    }
+
+    void masterSwitchDisablesEditCommandsToo()
+    {
+        Options opts;
+        opts.voiceCommands = false;
+        QCOMPARE(TextFormatter::format({{QStringLiteral("erase last line"), 0}}, opts),
+                 QStringLiteral("Erase last line"));
+    }
+
+    void breakCommandsCanBeDisabledIndividually()
+    {
+        Options opts;
+        opts.cmdNewLine = false;
+        QCOMPARE(TextFormatter::applyVoiceCommands(
+                     QStringLiteral("a new line here new paragraph there"), opts),
+                 QStringLiteral("a new line here\n\nthere"));
+    }
+
     void fixesSpaceBeforePunctuation()
     {
         QCOMPARE(TextFormatter::format({{QStringLiteral("Hello , world ."), 0}}, Options{}),
