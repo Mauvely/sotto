@@ -1,6 +1,10 @@
 import QtQuick
+import Sotto
 
-// The Sotto mark: a dot emitting two sound arcs, drawn in pure white.
+// The Sotto mark: a dot emitting two sound arcs. The dot carries the brand's
+// teal signal accent (the wordmark's reversed-variant treatment: slate
+// ground, teal dot); the arcs stay a soft white so the mark reads at a
+// glance against the dark pill.
 // The dot breathes gently while listening (unless animations are off).
 Item {
     id: mark
@@ -16,7 +20,7 @@ Item {
         width: mark.size * 0.30
         height: width
         radius: width / 2
-        color: "#FFFFFF"
+        color: Brand.signal
         x: mark.size * 0.06
         y: (mark.height - height) / 2
 

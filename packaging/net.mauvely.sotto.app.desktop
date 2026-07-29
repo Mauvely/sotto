@@ -1,11 +1,14 @@
 [Desktop Entry]
 Type=Application
+Version=1.0
 Name=Sotto
 GenericName=Local dictation
 Comment=Fully local voice dictation — audio never leaves this device
 Exec=sotto
-Icon=io.github.timurinal.sotto
+Icon=net.mauvely.sotto.app
 Terminal=false
 Categories=Utility;Accessibility;Audio;
 Keywords=dictation;speech;voice;transcription;whisper;
+StartupNotify=true
+StartupWMClass=net.mauvely.sotto.app
 X-GNOME-UsesNotifications=true

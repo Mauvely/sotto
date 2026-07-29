@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 project(sotto
     VERSION 0.1.0
     DESCRIPTION "Fully local voice dictation for Linux (Whisper-powered)"
-    HOMEPAGE_URL "https://github.com/timurinal/linux-transcription"
+    HOMEPAGE_URL "https://mauvely.com"
     LANGUAGES C CXX
 )
 
@@ -108,11 +108,20 @@ qt_add_executable(sotto
     resources/resources.qrc
 )
 
+# pragma Singleton in Brand.qml should be auto-detected, but set the property
+# explicitly too: belt-and-braces against Qt versions/policies where the
+# QML_FILES scan alone doesn't register it, which silently leaves `Brand`
+# unresolved (undefined) at runtime instead of failing the build. Must be set
+# *before* qt_add_qml_module, which reads source file properties as it
+# processes QML_FILES.
+set_source_files_properties(qml/Brand.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(sotto
     URI Sotto
     VERSION 1.0
     RESOURCE_PREFIX /qt/qml # Qt 6.5+ default; pinned so 6.4 builds match
     QML_FILES
+        qml/Brand.qml
         qml/Overlay.qml
         qml/SettingsWindow.qml
         qml/NotepadWindow.qml
@@ -121,6 +130,7 @@ qt_add_qml_module(sotto
         qml/LocalBadge.qml
         qml/SSection.qml
         qml/SLabel.qml
+        qml/SButton.qml
 )
 
 target_include_directories(sotto PRIVATE src)
@@ -153,8 +163,31 @@ endif()
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 install(TARGETS sotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES packaging/io.github.timurinal.sotto.desktop
+install(FILES packaging/net.mauvely.sotto.app.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES resources/icons/sotto.svg
-        RENAME io.github.timurinal.sotto.svg
+        RENAME net.mauvely.sotto.app.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+
+# ---------------------------------------------------------------------------
+# Packaging
+# ---------------------------------------------------------------------------
+# Linux: packaging/linux/build-appimage.sh (linuxdeploy + appimagetool), not
+# CPack — see cmake/MauvelyPackaging.cmake for why.
+#
+# Windows: inert today. Sotto has no Windows backend yet (AudioCapture,
+# hotkey, injection and the overlay are all Linux/Wayland-specific — see the
+# Portability roadmap in docs/ARCHITECTURE.md), so `cpack -G WIX` would only
+# ever produce an installer for a binary that can't run on the machine that
+# unpacks it. The module is wired up anyway so a future Windows port needs
+# nothing more than removing this comment; it's the same module Compose and
+# Snap can use as-is today, since both already build and ship on Windows.
+include(cmake/MauvelyPackaging.cmake)
+mauvely_configure_packaging(
+    TARGET       sotto
+    DISPLAY_NAME "Sotto"
+    DESCRIPTION  "${PROJECT_DESCRIPTION}"
+    VERSION      "${PROJECT_VERSION}"
+    UPGRADE_GUID "69E2BAFD-4552-4D1C-ADDE-9345FFC482BF"
+    ICON         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/sotto.ico"
+)

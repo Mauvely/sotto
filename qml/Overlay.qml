@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import Sotto
 
 // The dictation HUD: a black pill floating at the bottom of the active
 // screen. Window/layer-shell setup happens in OverlayController.
@@ -38,7 +39,7 @@ Window {
         id: pill
         anchors.fill: parent
         radius: height / 2
-        color: Qt.rgba(0, 0, 0, 0.93)
+        color: Qt.rgba(Brand.slate950.r, Brand.slate950.g, Brand.slate950.b, 0.93)
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.10)
         opacity: 0
@@ -82,6 +83,7 @@ Window {
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             color: Qt.rgba(1, 1, 1, 0.92)
+            font.family: Brand.bodyFamily
             font.pixelSize: 14
             elide: Text.ElideLeft // live text: keep the newest words visible
             maximumLineCount: 1

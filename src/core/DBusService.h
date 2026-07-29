@@ -4,18 +4,18 @@
 
 class App;
 
-// Session-bus interface io.github.timurinal.Sotto at /Sotto. Lets a second
+// Session-bus interface net.mauvely.Sotto at /Sotto. Lets a second
 // `sotto` invocation (or any compositor keybind running `sotto --toggle`,
 // or plain `qdbus`/`gdbus`) drive the running instance.
 class DBusService : public QObject
 {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "io.github.timurinal.Sotto")
+    Q_CLASSINFO("D-Bus Interface", "net.mauvely.Sotto")
 
 public:
-    static inline const QString kService = QStringLiteral("io.github.timurinal.sotto");
+    static inline const QString kService = QStringLiteral("net.mauvely.sotto");
     static inline const QString kPath = QStringLiteral("/Sotto");
-    static inline const QString kInterface = QStringLiteral("io.github.timurinal.Sotto");
+    static inline const QString kInterface = QStringLiteral("net.mauvely.Sotto");
 
     explicit DBusService(App *app, QObject *parent = nullptr);
 

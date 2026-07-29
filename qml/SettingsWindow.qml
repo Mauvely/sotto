@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import Sotto
 
 Window {
     id: win
@@ -9,21 +10,21 @@ Window {
     minimumWidth: 520
     minimumHeight: 400
     title: qsTr("Sotto — Settings")
-    color: "#0D0D0F"
+    color: Brand.appGround
 
     palette {
-        window: "#0D0D0F"
-        windowText: "#F2F2F2"
-        base: "#1A1A1D"
-        text: "#F2F2F2"
-        button: "#242428"
-        buttonText: "#F2F2F2"
-        highlight: "#4A4A52"
+        window: Brand.appGround
+        windowText: Brand.textBody
+        base: Brand.slate900
+        text: Brand.textBody
+        button: Brand.slate800
+        buttonText: Brand.textBody
+        highlight: Brand.primary
         highlightedText: "#FFFFFF"
-        placeholderText: "#77777D"
-        mid: "#3A3A40"
-        dark: "#111114"
-        light: "#2E2E33"
+        placeholderText: Brand.slate500
+        mid: Brand.slate700
+        dark: Brand.slate950
+        light: Brand.slate800
     }
 
     Flickable {
@@ -52,14 +53,16 @@ Window {
                     Layout.fillWidth: true
                     Text {
                         text: "Sotto"
-                        color: "#FFFFFF"
+                        color: Brand.textStrong
+                        font.family: Brand.displayFamily
+                        font.weight: Font.ExtraBold
                         font.pixelSize: 22
-                        font.bold: true
                     }
                     Text {
                         text: qsTr("100% local dictation — audio never leaves this device.")
-                        color: Qt.rgba(1, 1, 1, 0.6)
-                        font.pixelSize: 12
+                        color: Brand.textMuted
+                        font.family: Brand.displayFamily
+                        font.pixelSize: 13
                     }
                 }
 
@@ -90,20 +93,21 @@ Window {
                         }
                         Text {
                             text: modelData.label
-                            color: modelData.installed ? "#F2F2F2" : Qt.rgba(1, 1, 1, 0.5)
+                            color: modelData.installed ? Brand.textBody : Brand.textMuted
                             font.pixelSize: 13
                         }
                         Rectangle {
                             visible: modelData.recommended
-                            radius: 3
-                            color: Qt.rgba(1, 1, 1, 0.12)
+                            radius: Brand.radiusXs
+                            color: Qt.rgba(Brand.violet500.r, Brand.violet500.g, Brand.violet500.b, 0.20)
                             implicitWidth: recText.implicitWidth + 10
                             implicitHeight: 16
                             Text {
                                 id: recText
                                 anchors.centerIn: parent
                                 text: qsTr("RECOMMENDED")
-                                color: Qt.rgba(1, 1, 1, 0.8)
+                                color: Brand.violet300
+                                font.family: Brand.monoFamily
                                 font.pixelSize: 8
                                 font.letterSpacing: 1
                             }
@@ -113,26 +117,47 @@ Window {
                             text: modelData.sizeMB >= 1000
                                   ? (modelData.sizeMB / 1000).toFixed(1) + " GB"
                                   : modelData.sizeMB + " MB"
-                            color: Qt.rgba(1, 1, 1, 0.45)
+                            color: Brand.textMuted
                             font.pixelSize: 12
                         }
                         ProgressBar {
+                            id: dlBar
                             visible: modelData.downloading
                             value: Models.downloadProgress
                             implicitWidth: 110
+                            background: Rectangle {
+                                implicitHeight: 6
+                                radius: Brand.radiusPill
+                                color: Qt.rgba(1, 1, 1, 0.10)
+                            }
+                            contentItem: Item {
+                                Rectangle {
+                                    width: parent.width * dlBar.visualPosition
+                                    height: 6
+                                    radius: Brand.radiusPill
+                                    color: Brand.signal
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
                         }
-                        Button {
+                        SButton {
+                            size: "sm"
+                            variant: "primary"
                             visible: !modelData.installed && !modelData.downloading
                             enabled: Models.downloadingId === ""
                             text: qsTr("Download")
                             onClicked: Models.download(modelData.id)
                         }
-                        Button {
+                        SButton {
+                            size: "sm"
+                            variant: "secondary"
                             visible: modelData.downloading
                             text: qsTr("Cancel")
                             onClicked: Models.cancelDownload()
                         }
-                        Button {
+                        SButton {
+                            size: "sm"
+                            variant: "secondary"
                             visible: modelData.installed
                             text: qsTr("Remove")
                             onClicked: {
@@ -146,7 +171,7 @@ Window {
 
                 RowLayout {
                     spacing: 10
-                    Text { text: qsTr("Spoken language"); color: "#F2F2F2"; font.pixelSize: 13 }
+                    Text { text: qsTr("Spoken language"); color: Brand.textBody; font.pixelSize: 13 }
                     ComboBox {
                         id: langBox
                         implicitWidth: 220
@@ -191,14 +216,16 @@ Window {
                 RowLayout {
                     spacing: 10
                     enabled: Config.shortcutEnabled
-                    Text { text: qsTr("Preferred keys"); color: "#F2F2F2"; font.pixelSize: 13 }
+                    Text { text: qsTr("Preferred keys"); color: Brand.textBody; font.pixelSize: 13 }
                     TextField {
                         id: triggerField
                         implicitWidth: 180
                         text: Config.preferredShortcut
                         placeholderText: "LOGO+ALT+d"
                     }
-                    Button {
+                    SButton {
+                        size: "sm"
+                        variant: "primary"
                         text: qsTr("Apply && re-bind")
                         onClicked: {
                             Config.preferredShortcut = triggerField.text
@@ -218,7 +245,7 @@ Window {
                 RowLayout {
                     spacing: 10
                     enabled: Config.shortcutEnabled
-                    Text { text: qsTr("Behaviour"); color: "#F2F2F2"; font.pixelSize: 13 }
+                    Text { text: qsTr("Behaviour"); color: Brand.textBody; font.pixelSize: 13 }
                     ComboBox {
                         implicitWidth: 220
                         textRole: "name"
@@ -249,7 +276,9 @@ Window {
                         }
                         onActivated: Config.audioDevice = currentText
                     }
-                    Button {
+                    SButton {
+                        size: "sm"
+                        variant: "secondary"
                         text: qsTr("Refresh")
                         onClicked: App.refreshAudioDevices()
                     }
@@ -262,7 +291,7 @@ Window {
 
                 RowLayout {
                     spacing: 10
-                    Text { text: qsTr("Insert text by"); color: "#F2F2F2"; font.pixelSize: 13 }
+                    Text { text: qsTr("Insert text by"); color: Brand.textBody; font.pixelSize: 13 }
                     ComboBox {
                         implicitWidth: 260
                         textRole: "name"
@@ -301,7 +330,7 @@ Window {
                     spacing: 10
                     Text {
                         text: qsTr("New paragraph after a pause of")
-                        color: "#F2F2F2"
+                        color: Brand.textBody
                         font.pixelSize: 13
                     }
                     Slider {
@@ -315,7 +344,7 @@ Window {
                     }
                     Text {
                         text: pauseSlider.value.toFixed(1) + " s"
-                        color: Qt.rgba(1, 1, 1, 0.6)
+                        color: Brand.textMuted
                         font.pixelSize: 13
                     }
                 }
@@ -333,7 +362,7 @@ Window {
 
                 RowLayout {
                     spacing: 10
-                    Text { text: qsTr("Show the popup on"); color: "#F2F2F2"; font.pixelSize: 13 }
+                    Text { text: qsTr("Show the popup on"); color: Brand.textBody; font.pixelSize: 13 }
                     ComboBox {
                         implicitWidth: 240
                         model: App.screenNames

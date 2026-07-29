@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Sotto
 
 // A titled settings section with a hairline divider.
 ColumnLayout {
@@ -12,9 +13,9 @@ ColumnLayout {
 
     Text {
         text: section.title.toUpperCase()
-        color: Qt.rgba(1, 1, 1, 0.55)
+        color: Brand.textMuted
+        font.family: Brand.monoFamily
         font.pixelSize: 11
-        font.bold: true
         font.letterSpacing: 1.4
     }
     Rectangle {

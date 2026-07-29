@@ -1,5 +1,7 @@
 # Sotto
 
+A [Mauvely](https://mauvely.com) project.
+
 **Fully local voice dictation for Linux.** Press a global shortcut, speak, and the
 formatted text lands in whatever app has focus — like Whispr Flow, but every last
 sample is processed **on your machine**. No accounts, no cloud, no telemetry:
@@ -54,8 +56,8 @@ GPU backend (pick one):
 ## Build
 
 ```bash
-git clone https://github.com/timurinal/linux-transcription.git
-cd linux-transcription
+git clone https://github.com/mauvely/sotto.git
+cd sotto
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSOTTO_GPU=hip
 cmake --build build -j$(nproc)
 
@@ -66,6 +68,33 @@ sudo cmake --install build
 
 whisper.cpp (pinned release) is fetched at configure time; everything is linked
 statically into the `sotto` binary.
+
+## Packaging
+
+The website's download button is a single-file **AppImage**:
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSOTTO_GPU=vulkan
+cmake --build build -j$(nproc)
+packaging/linux/build-appimage.sh build   # -> build/Sotto-x86_64.AppImage
+```
+
+The first run downloads `linuxdeploy`, `linuxdeploy-plugin-qt` and
+`appimagetool` into `packaging/linux/.cache/` (gitignored); later runs reuse
+them. See the comments at the top of that script for the couple of
+environment quirks it works around (Qt5/Qt6 coexisting on the build machine,
+newer-toolchain `strip` failures).
+
+No Flathub, and no distro-specific `.deb`/`.rpm`/AUR packages for now —
+AppImage is the one Linux artifact.
+
+Windows: not yet. Sotto has no Windows backend (`AudioCapture`, the global
+hotkey, text injection and the overlay are all Linux/Wayland-specific — see
+the Portability roadmap in `docs/ARCHITECTURE.md`), so there's nothing to put
+in a `.msi` yet. `cmake/MauvelyPackaging.cmake` — the shared CPack/WiX module
+also usable by Compose and Snap, which already ship on Windows — is wired
+into `CMakeLists.txt` regardless, so a future Windows port needs no extra
+packaging work, just a working build.
 
 ## First run
 
@@ -113,7 +142,7 @@ sotto --notepad    # open the notepad
 sotto --quit
 ```
 
-A running instance is controlled over D-Bus (`io.github.timurinal.Sotto` at
+A running instance is controlled over D-Bus (`net.mauvely.Sotto` at
 `/Sotto`): `Toggle`, `Stop`, `ShowSettings`, `ShowNotepad`, `Quit`.
 
 ## Formatting
@@ -160,5 +189,8 @@ The `LOCAL` badge on the popup is a constant reminder of that promise.
 
 ## License
 
-TBD — currently personal-use software; a proper license will be chosen before
-any wider release.
+TBD — a proper license will be chosen before any wider release.
+
+---
+
+Sotto is developed by [Mauvely](https://mauvely.com).

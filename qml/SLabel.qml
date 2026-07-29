@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
+import Sotto
 
 // Dim explanatory text used across the settings window.
 Text {
     Layout.fillWidth: true
-    color: Qt.rgba(1, 1, 1, 0.55)
+    color: Brand.textMuted
+    font.family: Brand.bodyFamily
     font.pixelSize: 12
     wrapMode: Text.WordWrap
 }

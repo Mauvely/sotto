@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import Sotto
 
 // Dictate into a scratch buffer instead of the focused app.
 Window {
@@ -10,18 +11,18 @@ Window {
     minimumWidth: 380
     minimumHeight: 300
     title: qsTr("Sotto — Notepad")
-    color: "#0D0D0F"
+    color: Brand.appGround
 
     palette {
-        window: "#0D0D0F"
-        windowText: "#F2F2F2"
-        base: "#1A1A1D"
-        text: "#F2F2F2"
-        button: "#242428"
-        buttonText: "#F2F2F2"
-        highlight: "#4A4A52"
+        window: Brand.appGround
+        windowText: Brand.textBody
+        base: Brand.slate900
+        text: Brand.textBody
+        button: Brand.slate800
+        buttonText: Brand.textBody
+        highlight: Brand.primary
         highlightedText: "#FFFFFF"
-        placeholderText: "#77777D"
+        placeholderText: Brand.slate500
     }
 
     readonly property bool recording: App.state === "listening"
@@ -39,8 +40,9 @@ Window {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Dictate here, take the text anywhere.")
-                color: Qt.rgba(1, 1, 1, 0.6)
-                font.pixelSize: 12
+                color: Brand.textMuted
+                font.family: Brand.displayFamily
+                font.pixelSize: 13
             }
             LocalBadge {}
         }
@@ -52,12 +54,12 @@ Window {
             TextArea {
                 id: area
                 wrapMode: TextArea.Wrap
-                color: "#F2F2F2"
+                color: Brand.textBody
                 font.pixelSize: 14
                 placeholderText: qsTr("Press Record and start speaking…")
                 background: Rectangle {
-                    color: "#1A1A1D"
-                    radius: 8
+                    color: Brand.slate900
+                    radius: Brand.radiusSm
                     border.width: 1
                     border.color: Qt.rgba(1, 1, 1, 0.08)
                 }
@@ -77,7 +79,7 @@ Window {
             Layout.fillWidth: true
             visible: win.recording && App.partialText.length > 0
             text: App.partialText.replace(/\n+/g, "  ")
-            color: Qt.rgba(1, 1, 1, 0.5)
+            color: Brand.textMuted
             font.pixelSize: 12
             font.italic: true
             elide: Text.ElideLeft
@@ -87,7 +89,8 @@ Window {
             Layout.fillWidth: true
             spacing: 10
 
-            Button {
+            SButton {
+                variant: win.recording ? "secondary" : "primary"
                 text: win.recording ? qsTr("■ Stop") : (win.busy ? qsTr("Working…") : qsTr("● Record"))
                 enabled: App.state === "idle" || win.recording
                 onClicked: App.toggleNotepadDictation()
@@ -103,12 +106,14 @@ Window {
 
             Item { Layout.fillWidth: true }
 
-            Button {
+            SButton {
+                variant: "secondary"
                 text: qsTr("Copy all")
                 enabled: area.text.length > 0
                 onClicked: App.copyToClipboard(area.text)
             }
-            Button {
+            SButton {
+                variant: "secondary"
                 text: qsTr("Clear")
                 enabled: area.text.length > 0
                 onClicked: App.notepadText = ""

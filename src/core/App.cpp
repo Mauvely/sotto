@@ -46,7 +46,7 @@ void App::initialize()
     // Portals >= 1.20 require unsandboxed apps to self-report an app id
     // before using identity-sensitive interfaces like GlobalShortcuts.
     // Must happen before GlobalShortcutsPortal/PortalRemoteDesktop below.
-    Portal::registerHostApp(QStringLiteral("io.github.timurinal.sotto"));
+    Portal::registerHostApp(QStringLiteral("net.mauvely.sotto.app"));
 
     m_models = new ModelManager(this);
     m_capture = new AudioCapture(this);

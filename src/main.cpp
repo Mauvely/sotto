@@ -3,6 +3,9 @@
 #include "core/Settings.h"
 
 #include <QApplication>
+#include <QFont>
+#include <QFontDatabase>
+#include <QIcon>
 #include <QQuickStyle>
 
 #include <cstdio>
@@ -50,8 +53,18 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv); // QApplication: needed for QSystemTrayIcon
     app.setQuitOnLastWindowClosed(false);
-    QGuiApplication::setDesktopFileName(QStringLiteral("io.github.timurinal.sotto"));
+    QGuiApplication::setDesktopFileName(QStringLiteral("net.mauvely.sotto.app"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/sotto.svg")));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    // Mauvely brand faces: Baloo 2 (display), Inter (body/UI), JetBrains Mono
+    // (labels/code). Bundled so the brand look doesn't depend on what's
+    // installed system-wide; see resources/fonts/NOTICE.md for licensing.
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/Baloo2-Regular.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/Baloo2-ExtraBold.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/Inter-Variable.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/JetBrainsMono-Regular.ttf"));
+    app.setFont(QFont(QStringLiteral("Inter")));
 
     const QStringList args = app.arguments().mid(1);
 

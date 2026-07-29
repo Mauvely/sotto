@@ -9,7 +9,7 @@ to the running instance and exits.
 flowchart LR
     subgraph input
         HK[GlobalShortcutsPortal<br/>xdg-desktop-portal] -- activate/deactivate --> APP
-        DBUS[DBusService<br/>io.github.timurinal.Sotto] -- Toggle/Show* --> APP
+        DBUS[DBusService<br/>net.mauvely.Sotto] -- Toggle/Show* --> APP
         TRAY[TrayIcon] --> APP
     end
 
@@ -77,10 +77,10 @@ settings/notepad windows stay ordinary xdg-toplevels):
 Without LayerShellQt (X11, dev containers) it degrades to a frameless
 always-on-top `Qt::Tool` window positioned on the screen under the cursor.
 
-The HUD itself is monochrome: black pill, white logo mark (dot + two arcs),
-22 live level bars, live transcript line (elided from the left so the newest
-words stay visible), and a `LOCAL` badge. All `Behavior`/animations are gated
-on `Config.animationsEnabled`.
+The HUD follows the Mauvely brand: a slate-950 pill, the logo mark (white
+arcs, teal signal dot), 22 teal level bars, live transcript line (elided from
+the left so the newest words stay visible), and a teal-tinted `LOCAL` badge.
+All `Behavior`/animations are gated on `Config.animationsEnabled`.
 
 ## Latency budget (defaults)
 

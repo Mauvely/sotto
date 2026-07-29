@@ -148,7 +148,7 @@ void Settings::setAudioDevice(const QString &v)
 QString Settings::autostartFilePath() const
 {
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    return configDir + QStringLiteral("/autostart/io.github.timurinal.sotto.desktop");
+    return configDir + QStringLiteral("/autostart/net.mauvely.sotto.app.desktop");
 }
 
 bool Settings::launchAtLogin() const { return QFile::exists(autostartFilePath()); }
@@ -165,7 +165,7 @@ void Settings::setLaunchAtLogin(bool v)
                     "Name=Sotto\n"
                     "Comment=Fully local voice dictation\n"
                     "Exec=" + QCoreApplication::applicationFilePath().toUtf8() + "\n"
-                    "Icon=io.github.timurinal.sotto\n"
+                    "Icon=net.mauvely.sotto.app\n"
                     "X-KDE-autostart-phase=2\n");
         }
     } else {

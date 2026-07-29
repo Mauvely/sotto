@@ -1,7 +1,8 @@
 import QtQuick
+import Sotto
 
-// Monochrome level bars fed from App.levels (a scrolling window of recent
-// microphone RMS values, newest on the right).
+// Teal (brand signal accent) level bars fed from App.levels (a scrolling
+// window of recent microphone RMS values, newest on the right).
 Item {
     id: bars
     property var levels: []
@@ -21,7 +22,7 @@ Item {
             Rectangle {
                 width: 3
                 radius: 1.5
-                color: "#FFFFFF"
+                color: Brand.signal
                 height: 4 + (bars.levels[index] || 0) * (bars.height - 6)
                 y: (bars.height - height) / 2
                 opacity: bars.dimmed ? 0.25
