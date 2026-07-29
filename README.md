@@ -14,8 +14,9 @@ Wayland) first, with an experimental Windows port.
 - 🧠 [whisper.cpp](https://github.com/ggml-org/whisper.cpp) under the hood, with
   GPU acceleration: **ROCm (AMD)**, Vulkan, or CUDA
 - ✍️ Proper writing, not word soup: punctuation and capitalisation from Whisper,
-  plus paragraph breaks when you pause, and "new line" / "new paragraph" voice
-  commands
+  plus paragraph breaks when you pause, and voice commands — "new line",
+  "new paragraph", "delete last line", "delete last sentence" — each with its
+  own toggle
 - 📥 Text is inserted into the focused app (clipboard+paste or ydotool), or
   copied to the clipboard, or dictated into a built-in notepad window
 - ⚙️ Settings UI: model download manager, shortcut, microphone, output method,
@@ -38,7 +39,14 @@ sudo pacman -S --needed base-devel cmake ninja git \
 
 # recommended for inserting text into apps
 sudo pacman -S --needed wl-clipboard ydotool
+
+# optional: lets the translucent HUD ask KWin for blur-behind
+sudo pacman -S --needed kwindowsystem
 ```
+
+`layer-shell-qt` and `kwindowsystem` are both optional at build time — without
+them the overlay falls back to a plain always-on-top window and the
+translucency switch just lowers the pill's opacity.
 
 GPU backend (pick one):
 
@@ -70,7 +78,6 @@ sudo cmake --install build
 whisper.cpp (pinned release) is fetched at configure time; everything is linked
 statically into the `sotto` binary.
 
-<<<<<<< HEAD
 ## Packaging
 
 The website's download button is a single-file **AppImage**:
@@ -165,13 +172,15 @@ opacity so your compositor's blur can shine through:
   blur-behind itself — just flip the switch.
 - **Hyprland**: add `layerrule = blur, sotto-hud` (the HUD's layer-shell
   namespace is `sotto-hud`; combine with `ignorealpha` to taste).
-- **Windows (planned)**: the same switch will map to Mica/acrylic once the
-  Windows port lands.
+- **Windows (planned)**: the same switch will map to Mica/acrylic — the
+  experimental port doesn't wire it up yet.
 
 ### Dictating without inserting
 
 Open the **Notepad** (tray menu or `sotto --notepad`), press *Record*, and the
-formatted text accumulates in the window with a Copy button.
+formatted text accumulates in the window with a Copy button. That and the
+focused app are the only two dictation targets — there is no chat-style
+transcript window keeping a scrollback of past dictations.
 
 ### CLI / scripting
 

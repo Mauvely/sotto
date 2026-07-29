@@ -2,8 +2,9 @@
 
 One process, one binary. A Qt 6 application that lives in the background
 (tray icon), owns a layer-shell overlay window, and runs whisper.cpp on a
-worker thread. A second `sotto` invocation forwards its command over D-Bus
-to the running instance and exits.
+worker thread. A second `sotto` invocation forwards its command to the running
+instance through `SingleInstance` — the session bus on Linux, a named pipe on
+Windows — and exits.
 
 ```mermaid
 flowchart LR
@@ -77,6 +78,14 @@ settings/notepad windows stay ordinary xdg-toplevels):
 Without LayerShellQt (X11, dev containers) it degrades to a frameless
 always-on-top `Qt::Tool` window positioned on the screen under the cursor.
 
+`Config.overlayTranslucent` drops the pill to 55% alpha so the compositor's
+blur can show through. Built against `KF6WindowSystem` (optional,
+`SOTTO_HAVE_KWINDOWSYSTEM`), `OverlayController` also asks KWin for
+blur-behind over the pill's capsule region — re-requested on every show,
+since hiding destroys the wl surface. `App.blurAvailable` tells the UI
+whether that path was compiled in; Hyprland users get the same effect with
+`layerrule = blur, sotto-hud`.
+
 The HUD follows the Mauvely brand: a slate-950 pill, the logo mark (white
 arcs, teal signal dot), 22 teal level bars, live transcript line (elided from
 the left so the newest words stay visible), and a teal-tinted `LOCAL` badge.
@@ -107,3 +116,6 @@ All `Behavior`/animations are gated on `Config.animationsEnabled`.
 - Injection never types unicode via keycodes; anything beyond the paste
   keystroke goes through the clipboard.
 - No i18n scaffolding yet (strings are `tr()`-wrapped already).
+- Two dictation targets only (`App::Target`): the focused app via
+  `TextInjector`, or the built-in notepad window. There is no chat-style
+  transcript window — a scrollback of past dictations is not part of the app.

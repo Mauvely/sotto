@@ -217,13 +217,12 @@ endif()
 # Linux: packaging/linux/build-appimage.sh (linuxdeploy + appimagetool), not
 # CPack — see cmake/MauvelyPackaging.cmake for why.
 #
-# Windows: inert today. Sotto has no Windows backend yet (AudioCapture,
-# hotkey, injection and the overlay are all Linux/Wayland-specific — see the
-# Portability roadmap in docs/ARCHITECTURE.md), so `cpack -G WIX` would only
-# ever produce an installer for a binary that can't run on the machine that
-# unpacks it. The module is wired up anyway so a future Windows port needs
-# nothing more than removing this comment; it's the same module Compose and
-# Snap can use as-is today, since both already build and ship on Windows.
+# Windows: `cpack -G WIX` has a real binary to wrap — the experimental port
+# (WinHotkey, SendInput injection, QLocalServer single instance, registry
+# autostart; see the Portability table in docs/ARCHITECTURE.md) builds and
+# runs. No .msi is published yet because the port hasn't had enough
+# real-hardware time, not because the packaging is missing. It's the same
+# module Compose and Snap use, both of which already ship on Windows.
 include(cmake/MauvelyPackaging.cmake)
 mauvely_configure_packaging(
     TARGET       sotto
