@@ -1,0 +1,217 @@
+# Ship a release when a version bump lands on main.
+#
+# Same shape as Compose's release.yml, minus Windows: Sotto's audio capture,
+# global hotkey, text injection and overlay are all Linux/Wayland-specific, so
+# there is nothing to put in a .msi yet (see docs/ARCHITECTURE.md). The CPack
+# call in CMakeLists.txt stays inert until that changes.
+#
+# Sotto has no in-app updater and is not getting one. The README's privacy
+# claim — "network is used exactly once per model download, from the official
+# whisper.cpp model repository, at your request" — is a promise, and a process
+# that phones home on a timer to ask about new versions would break it. The
+# download page is how people find a new Sotto.
+#
+# The trigger is "merge to main", not a tag: project(VERSION) in CMakeLists.txt
+# is already the one source of truth, and the gate job asks the release service
+# whether that version has shipped. Bump and merge to ship; merge anything else
+# and only the gate runs.
+#
+# Required repository secrets:
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   MAUVELY_RELEASES_TOKEN   — must match the Worker's RELEASES_TOKEN
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  APP_KEY: sotto
+  API_BASE: https://mauvely.com
+  PLATFORM: linux-x86_64
+
+jobs:
+  gate:
+    name: Should we release?
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9][0-9.]*\).*/\1/p' \
+              CMakeLists.txt | head -1)"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Could not read project(VERSION ...) from CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Failing to ask is treated as "do not release" rather than "release
+          # anyway": publishing twice off a transient network error is worse.
+          if ! RESPONSE="$(curl -fsS --retry 3 \
+                "$API_BASE/api/releases?app=$APP_KEY&version=$VERSION")"; then
+            echo "::error::Could not reach the release service at $API_BASE." \
+                 "Refusing to release without knowing whether $VERSION already shipped."
+            exit 1
+          fi
+          COUNT="$(printf '%s' "$RESPONSE" \
+            | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
+
+          if [[ "$COUNT" -gt 0 ]]; then
+            echo "::notice::$APP_KEY $VERSION is already published — nothing to do."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$APP_KEY $VERSION is not published yet — building."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build AppImage
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ \
+            qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-wayland \
+            liblayershellqt-dev \
+            libgl1-mesa-dev
+
+      - name: Configure
+        # SOTTO_GPU=cpu is the portable build: a CUDA/HIP/Vulkan binary would
+        # only run where those runtimes are installed, and whisper.cpp is
+        # statically linked, so one artifact cannot cover them all. A per-backend
+        # matrix is the eventual answer, once the catalogue can express it.
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSOTTO_GPU=cpu
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Smoke run
+        run: ./build/sotto --help
+
+      - name: Package
+        run: packaging/linux/build-appimage.sh build
+
+      - name: Describe the artifact
+        id: artifact
+        run: |
+          set -euo pipefail
+          FILE="$(ls build/Sotto-*.AppImage 2>/dev/null | head -1)"
+          if [[ -z "$FILE" ]]; then
+            echo "::error::Packaging produced no AppImage in build/"
+            ls -la build/ || true
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$FILE" "dist/$(basename "$FILE")"
+          NAME="$(basename "$FILE")"
+          cat > "dist/$PLATFORM.json" <<EOF
+          {"app":"$APP_KEY",
+           "version":"${{ needs.gate.outputs.version }}",
+           "platform":"$PLATFORM",
+           "format":"appimage",
+           "filename":"$NAME",
+           "size":$(stat -c%s "dist/$NAME"),
+           "sha256":"$(sha256sum "dist/$NAME" | cut -d' ' -f1)"}
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.PLATFORM }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [gate, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # to push the tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Upload artifacts to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          V='${{ needs.gate.outputs.version }}'
+          for f in dist/*.AppImage; do
+            [[ -e "$f" ]] || continue
+            echo "Uploading $(basename "$f")..."
+            aws s3 cp "$f" "s3://mauvely-releases/$APP_KEY/$V/$(basename "$f")" \
+              --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+              --only-show-errors
+          done
+
+      # Strictly after the upload. POST /api/releases calls R2.head() and
+      # refuses if the object is not there, so the worst a failure here can do is
+      # leave an unreferenced object — never a feed entry pointing at a 404.
+      - name: Register with the release service
+        run: |
+          set -euo pipefail
+          for meta in dist/*.json; do
+            echo "Registering $(basename "$meta")..."
+            curl -fsS -X POST "$API_BASE/api/releases" \
+              -H "authorization: Bearer ${{ secrets.MAUVELY_RELEASES_TOKEN }}" \
+              -H 'content-type: application/json' \
+              --data-binary "@$meta"
+            echo
+          done
+
+      - name: Tag the release
+        run: |
+          set -euo pipefail
+          V='${{ needs.gate.outputs.version }}'
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git rev-parse "v$V" >/dev/null 2>&1; then
+            echo "::notice::tag v$V already exists"
+          else
+            git tag -a "v$V" -m "Sotto $V"
+            git push origin "v$V"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Sotto ${{ needs.gate.outputs.version }} published"
+            echo
+            echo "| Platform | File | SHA-256 |"
+            echo "|---|---|---|"
+            python3 - <<'PY'
+          import glob, json
+          for p in sorted(glob.glob('dist/*.json')):
+              m = json.load(open(p))
+              print(f"| {m['platform']} | {m['filename']} | `{m['sha256'][:16]}…` |")
+          PY
+            echo
+            echo "Download page: $API_BASE/download?app=$APP_KEY"
+          } >> "$GITHUB_STEP_SUMMARY"

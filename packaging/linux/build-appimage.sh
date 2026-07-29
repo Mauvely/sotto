@@ -20,6 +20,16 @@ CACHE_DIR="$ROOT_DIR/packaging/linux/.cache"
 APPDIR="$BUILD_DIR/AppDir"
 ARCH="$(uname -m)"
 
+# Single source of truth for the version, same as the compiled-in SOTTO_VERSION.
+# The release workflow reads it the same way, so the filename registered with
+# the download catalogue and the filename produced here cannot drift apart.
+VERSION="$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9][0-9.]*\).*/\1/p' \
+    "$ROOT_DIR/CMakeLists.txt" | head -1)"
+if [[ -z "$VERSION" ]]; then
+    echo "error: could not read the project version out of CMakeLists.txt" >&2
+    exit 1
+fi
+
 if [[ ! -x "$BUILD_DIR/sotto" ]]; then
     echo "error: $BUILD_DIR/sotto not found — build it first (see usage above)" >&2
     exit 1
@@ -86,7 +96,9 @@ export NO_STRIP=1
     --plugin qt \
     --exclude-library="kimg_*"
 
-"$CACHE_DIR/appimagetool-$ARCH.AppImage" --appimage-extract-and-run \
-    "$APPDIR" "$BUILD_DIR/Sotto-$ARCH.AppImage"
+# Name matches the `platform` key the release feed indexes by (linux-x86_64), so
+# a locally built AppImage and a published one are called the same thing.
+OUT="$BUILD_DIR/Sotto-$VERSION-linux-$ARCH.AppImage"
+"$CACHE_DIR/appimagetool-$ARCH.AppImage" --appimage-extract-and-run "$APPDIR" "$OUT"
 
-echo "Wrote $BUILD_DIR/Sotto-$ARCH.AppImage"
+echo "Wrote $OUT"
