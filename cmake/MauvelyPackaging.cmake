@@ -36,6 +36,18 @@
 # candle.exe/light.exe, which GitHub's windows-latest runners do not ship by
 # default — install it first, e.g. `choco install wixtoolset -y`.
 
+# Captured here, at include() time, NOT inside the macro below.
+#
+# A CMake macro is expanded textually into the caller's scope, so
+# CMAKE_CURRENT_LIST_DIR read *inside* the macro is the directory of the
+# CMakeLists.txt that called it — the repo root — not this module's directory.
+# Nothing here needs it yet; it exists so that module-relative paths added later
+# (Compose's copy resolves a WiX template this way) are written against the one
+# variable that means what it looks like it means. Getting this wrong resolved
+# to <repo>/../..., one level above the repository, and failed every Windows
+# build in Compose before it was caught.
+set(_MAUVELY_PACKAGING_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 macro(mauvely_configure_packaging)
     set(_mp_options)
     set(_mp_one_value TARGET DISPLAY_NAME DESCRIPTION VERSION UPGRADE_GUID ICON)
