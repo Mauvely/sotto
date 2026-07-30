@@ -48,6 +48,122 @@
 # build in Compose before it was caught.
 set(_MAUVELY_PACKAGING_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
+# ---------------------------------------------------------------------------
+# Locate windeployqt.
+# ---------------------------------------------------------------------------
+# Qt6 exposes it as an imported target; every Qt installation ever has also put
+# the binary next to qmake, which covers Qt5 and any layout the target is
+# missing from.
+function(_mauvely_find_windeployqt out_var)
+    if(TARGET Qt6::windeployqt)
+        get_target_property(_wdq Qt6::windeployqt IMPORTED_LOCATION)
+        if(_wdq)
+            set(${out_var} "${_wdq}" PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+
+    set(_hints "")
+    foreach(_qmake_target Qt6::qmake Qt5::qmake)
+        if(TARGET ${_qmake_target})
+            get_target_property(_qmake ${_qmake_target} IMPORTED_LOCATION)
+            if(_qmake)
+                get_filename_component(_dir "${_qmake}" DIRECTORY)
+                list(APPEND _hints "${_dir}")
+            endif()
+        endif()
+    endforeach()
+    if(QT_QMAKE_EXECUTABLE)
+        get_filename_component(_dir "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+        list(APPEND _hints "${_dir}")
+    endif()
+    if(DEFINED ENV{QT_ROOT_DIR})
+        list(APPEND _hints "$ENV{QT_ROOT_DIR}/bin")
+    endif()
+
+    find_program(MAUVELY_WINDEPLOYQT
+        NAMES windeployqt6 windeployqt
+        HINTS ${_hints}
+        DOC "Qt's Windows deployment tool — stages the Qt runtime into the installer")
+    set(${out_var} "${MAUVELY_WINDEPLOYQT}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Put the Qt runtime in the INSTALLER, not just the build tree.
+# ---------------------------------------------------------------------------
+# install(TARGETS) copies exactly one file: the .exe. Qt's DLLs, the platform
+# plugin, the WebEngine helper process and its Chromium resource paks are not
+# targets and not dependencies CMake tracks, so none of them reach the staging
+# directory CPack builds the .msi from. The .msi then installs perfectly and
+# the app dies before main() with a loader dialog:
+#
+#     The code execution cannot proceed because Qt6Widgets.dll was not found.
+#
+# Running windeployqt over build/bin/Release does NOT fix this, which is the
+# trap — the workflows did exactly that and it looks like deployment. CPack
+# never reads the build tree. The tool has to run over the *staged install*
+# tree, which is what the code below does: inside an install script
+# CMAKE_INSTALL_PREFIX is CPack's staging root during `cpack`, and the real
+# destination during a plain `cmake --install`.
+#
+# The install(TARGETS ...) rule for the target must already be declared when
+# this is called, since install rules run in declaration order and windeployqt
+# needs the .exe to be there to read its imports.
+function(_mauvely_deploy_qt_runtime target)
+    _mauvely_find_windeployqt(_wdq)
+    if(NOT _wdq)
+        message(FATAL_ERROR
+            "mauvely_configure_packaging: windeployqt was not found, so the "
+            ".msi would contain a lone ${target}.exe with no Qt runtime beside "
+            "it — it installs fine and cannot start. Put Qt's bin directory on "
+            "PATH or set MAUVELY_WINDEPLOYQT to the tool's full path.")
+    endif()
+    message(STATUS "${target}: staging the Qt runtime with ${_wdq}")
+
+    if(CMAKE_INSTALL_BINDIR)
+        set(_bindir "${CMAKE_INSTALL_BINDIR}")
+    else()
+        set(_bindir "bin")
+    endif()
+
+    # Bracket argument so ${...} survives to install time; string(CONFIGURE)
+    # substitutes only the @...@ placeholders, which are configure-time values.
+    set(_code [==[
+set(_wdq "@_wdq@")
+set(_exe "${CMAKE_INSTALL_PREFIX}/@_bindir@/@target@.exe")
+if(NOT EXISTS "${_exe}")
+    set(_exe "${CMAKE_INSTALL_PREFIX}/@target@.exe")
+endif()
+if(NOT EXISTS "${_exe}")
+    message(FATAL_ERROR
+        "windeployqt has nothing to work on: @target@.exe is not in the install "
+        "tree under ${CMAKE_INSTALL_PREFIX}. The install(TARGETS ...) rule for "
+        "it has to be declared before mauvely_configure_packaging().")
+endif()
+
+# windeployqt infers almost everything from the binary's imports; it only needs
+# telling which CRT flavour to match. RelWithDebInfo links the release runtime.
+if(CMAKE_INSTALL_CONFIG_NAME STREQUAL "Debug")
+    set(_cfg_flag "--debug")
+else()
+    set(_cfg_flag "--release")
+endif()
+
+message(STATUS "Deploying the Qt runtime beside ${_exe}")
+execute_process(
+    COMMAND "${_wdq}" ${_cfg_flag} "${_exe}"
+    RESULT_VARIABLE _wdq_status)
+if(NOT _wdq_status EQUAL 0)
+    message(FATAL_ERROR
+        "windeployqt failed (exit ${_wdq_status}). Failing the install rather "
+        "than warning: the .msi it would produce ships an executable that "
+        "cannot start, and nothing downstream can detect that.")
+endif()
+]==])
+    string(CONFIGURE "${_code}" _code @ONLY)
+    install(CODE "${_code}")
+endfunction()
+
 macro(mauvely_configure_packaging)
     set(_mp_options)
     set(_mp_one_value TARGET DISPLAY_NAME DESCRIPTION VERSION UPGRADE_GUID ICON)
@@ -72,6 +188,10 @@ macro(mauvely_configure_packaging)
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://mauvely.com")
 
     if(WIN32)
+        # Before anything CPack-specific: without this the installer contains
+        # one executable and no Qt. See the note above the function.
+        _mauvely_deploy_qt_runtime("${MP_TARGET}")
+
         set(CPACK_GENERATOR "WIX")
         set(CPACK_WIX_UPGRADE_GUID "${MP_UPGRADE_GUID}")
         set(CPACK_WIX_PRODUCT_ICON "${MP_ICON}")
