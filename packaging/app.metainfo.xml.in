@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo. Required, not decorative: flatpak-builder validates this
+  file and fails the build on an error, and Flathub refuses a submission without
+  one. No app in the suite had one before app-base, which is the whole reason the
+  Flatpak lane did not exist.
+
+  Generated from this template by cmake/MauvelyAppInfo.cmake. Check it with:
+
+      appstreamcli validate build/packaging/<APP_ID>.metainfo.xml
+
+  The <id> must equal the .desktop filename without its extension, or the
+  software centre shows two entries for one app.
+-->
+<component type="desktop-application">
+  <id>@MAUVELY_APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+
+  <name>@MAUVELY_APP_DISPLAY_NAME@</name>
+  <!-- No full stop: AppStream treats the summary as a noun phrase, not a
+       sentence, and appstreamcli flags a trailing dot. -->
+  <summary>@MAUVELY_APP_SUMMARY@</summary>
+
+  <description>
+    <p>@MAUVELY_APP_DESCRIPTION@</p>
+    <p>
+      Part of the Mauvely Suite — a set of tools for creating e-learning and
+      digital courses that are built to work together.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">@MAUVELY_APP_ID@.desktop</launchable>
+  <url type="homepage">https://mauvely.com</url>
+  <!-- No bugtracker URL. These repositories are private, so a public issues link
+       would 404 for everyone who could act on it. -->
+
+  <developer id="com.mauvely">
+    <name>Mauvely</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <!-- Release history is not generated from git tags on purpose: the version
+       that matters is project(VERSION) in CMakeLists.txt, which is also what
+       the release feed's gate reads and what the running app compares against.
+       One source of truth.
+
+       `date` is mandatory — appstreamcli fails with release-time-missing
+       without it, and that failure takes the whole Flatpak build down. It comes
+       from the HEAD commit date rather than from the clock, so rebuilding the
+       same commit produces the same file. -->
+  <releases>
+    <release version="@MAUVELY_APP_VERSION@" date="@MAUVELY_APP_RELEASE_DATE@"/>
+  </releases>
+</component>

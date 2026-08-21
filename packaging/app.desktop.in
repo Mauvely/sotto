@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=@MAUVELY_APP_DISPLAY_NAME@
+GenericName=@MAUVELY_APP_GENERIC_NAME@
+Comment=@MAUVELY_APP_DESCRIPTION@
+Exec=@MAUVELY_APP_BINARY@@MAUVELY_APP_EXEC_ARGS@
+Icon=@MAUVELY_APP_ID@
+Terminal=false
+Categories=@MAUVELY_APP_CATEGORIES@
+StartupNotify=true
+StartupWMClass=@MAUVELY_APP_ID@
+@MAUVELY_APP_DESKTOP_EXTRA@

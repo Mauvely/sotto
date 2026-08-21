@@ -1,6 +1,6 @@
 <RCC>
     <qresource prefix="/">
-        <file alias="icons/sotto.svg">icons/sotto.svg</file>
+        <file alias="icons/app.svg">icons/app.svg</file>
     </qresource>
     <qresource prefix="/fonts">
         <file alias="Baloo2-Regular.ttf">fonts/Baloo2-Regular.ttf</file>

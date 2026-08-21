@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(sotto
     VERSION 0.1.0
-    DESCRIPTION "Fully local voice dictation for Linux (Whisper-powered)"
+    DESCRIPTION "Fully local voice dictation, powered by Whisper"
     HOMEPAGE_URL "https://mauvely.com"
     LANGUAGES C CXX
 )
@@ -26,6 +26,12 @@ set_property(CACHE SOTTO_GPU PROPERTY STRINGS cpu hip cuda vulkan)
 option(SOTTO_LAYER_SHELL "Use LayerShellQt for the Wayland overlay (auto-disabled if not found)" ON)
 option(SOTTO_BUILD_TESTS "Build unit tests" ON)
 
+# Compiles out the self-updater for a Microsoft Store build. Sotto has no
+# updater yet, so this only defines a macro today — but the release workflow
+# builds the MSI with it OFF and the MSIX with it ON, and an option that does
+# not exist would make CMake warn about an unused -D on every Windows release.
+option(SOTTO_STORE_BUILD "Build for the Microsoft Store (no self-update)" OFF)
+
 # ---------------------------------------------------------------------------
 # Qt
 # ---------------------------------------------------------------------------
@@ -38,6 +44,14 @@ if(NOT WIN32)
     find_package(Qt6 6.4 REQUIRED COMPONENTS DBus)
 endif()
 qt_standard_project_setup()
+
+# bin/, like every sibling. Sotto dropped its binary at the top of the build
+# tree, which is the one thing the shared packaging scripts would otherwise have
+# to guess about. They cope either way now, but there is no reason for this app
+# to be the exception.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin/Release")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin/Debug")
 
 # ---------------------------------------------------------------------------
 # LayerShellQt (optional; present on Arch as `layer-shell-qt`)
@@ -201,15 +215,19 @@ endif()
 # ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
+# The brand mark has two consumers: packaging/app.svg, which the shared tooling
+# installs and rasterises, and resources/icons/app.svg, which the binary embeds
+# for its window and tray icon. Copied at configure time rather than checked in
+# twice, so they cannot drift.
+configure_file(packaging/app.svg
+               "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app.svg" COPYONLY)
+
 include(GNUInstallDirs)
 install(TARGETS sotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-if(NOT WIN32)
-    install(FILES packaging/net.mauvely.sotto.app.desktop
-            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-    install(FILES resources/icons/sotto.svg
-            RENAME net.mauvely.sotto.app.svg
-            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
-endif()
+# Freedesktop integration — the .desktop file, the AppStream metainfo and the
+# hicolor icons — is installed by mauvely_app_info() below. All of it derives
+# from APP_ID, which is also what src/main.cpp and src/core/Settings.cpp read,
+# so the strings that have to agree cannot drift apart.
 
 # ---------------------------------------------------------------------------
 # Packaging
@@ -223,12 +241,35 @@ endif()
 # runs. No .msi is published yet because the port hasn't had enough
 # real-hardware time, not because the packaging is missing. It's the same
 # module Compose and Snap use, both of which already ship on Windows.
-include(cmake/MauvelyPackaging.cmake)
-mauvely_configure_packaging(
-    TARGET       sotto
+if(SOTTO_STORE_BUILD)
+    target_compile_definitions(sotto PRIVATE SOTTO_STORE_BUILD)
+endif()
+
+include(cmake/MauvelyAppInfo.cmake)
+mauvely_app_info(
+    KEY          sotto
+    BINARY       sotto
     DISPLAY_NAME "Sotto"
+    GENERIC_NAME "Local dictation"
+    APP_ID       net.mauvely.sotto.app
     DESCRIPTION  "${PROJECT_DESCRIPTION}"
-    VERSION      "${PROJECT_VERSION}"
+    SUMMARY      "Fully local transcription and voice dictation"
+    # `Utility` is the one Main category; `Accessibility` is an Additional one,
+    # so this pairing draws no warning. The original .desktop said
+    # `Utility;Accessibility;Audio;` and `Audio` is a Main category that the
+    # spec requires `AudioVideo` alongside — desktop-file-validate calls that an
+    # error that "will be fatal in the future". Sotto is a dictation tool, not a
+    # media player, so the fix is to drop it rather than add AudioVideo.
+    CATEGORIES   Utility Accessibility
+    # No EXEC_ARGS: main() parses only its own flags and takes no file.
+    #
+    # Unchanged. It must never change between releases: it is how WiX knows
+    # 0.2.0 replaces 0.1.0 rather than installing beside it, and Sotto has
+    # shipped installs to protect.
     UPGRADE_GUID "69E2BAFD-4552-4D1C-ADDE-9345FFC482BF"
-    ICON         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/sotto.ico"
+    ICON         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app.ico"
+    # Installs into %LOCALAPPDATA%, so an update applies with `msiexec /passive`
+    # and no UAC prompt. It was absent from the call this replaces, which would
+    # have made every future Windows update raise an elevation dialog.
+    PER_USER
 )

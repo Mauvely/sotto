@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for the Microsoft Store build of @DISPLAY_NAME@.
+
+  Substituted by packaging/windows/build-msix.ps1, which replaces the @TOKENS@
+  below. Not a CMake configure_file: three of the values are Partner Center
+  identity, which lives in CI configuration and has nothing to do with how the
+  app is compiled — putting them in CMake would make a local build ask for a
+  publisher CN it has no use for.
+
+  This is a desktop-bridge package, not a UWP app. EntryPoint
+  Windows.FullTrustApplication plus the runFullTrust capability is what says
+  "this is an ordinary Win32 program, packaged". These apps read and write files
+  wherever the user points them, and some spawn helper processes; a UWP-style
+  package would break both.
+
+  Three identity values must match the Partner Center reservation *exactly* or
+  the upload is rejected with a message that names the mismatch but not where to
+  fix it:
+
+    Name                 the reserved package identity, e.g. Mauvely.@BINARY@
+    Publisher            the CN=<guid> string Partner Center assigns; NOT "CN=Mauvely"
+    PublisherDisplayName the publisher display name on the account
+
+  Version is four parts and the revision must be 0 — the Store reserves the
+  fourth field for its own rebuilds and rejects a package that sets it. The
+  build script derives x.y.z.0 from project(VERSION); nothing here should be
+  hand-edited per release.
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap rescap">
+
+  <Identity
+      Name="@IDENTITY_NAME@"
+      Publisher="@PUBLISHER@"
+      Version="@VERSION@"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>@DISPLAY_NAME@</DisplayName>
+    <PublisherDisplayName>@PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Description>@DESCRIPTION@</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- 10.0.17763 (1809) is the floor: it is the oldest release still taking
+         security updates on any servicing channel, and the oldest that ships
+         the MSIX runtime features below without an optional update. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0"
+                        MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-gb" />
+  </Resources>
+
+  <Applications>
+    <Application Id="@BINARY@"
+                 Executable="bin\@BINARY@.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+          DisplayName="@DISPLAY_NAME@"
+          Description="@DESCRIPTION@"
+          BackgroundColor="transparent"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png" />
+
+      <!-- Deliberately no windows.fileTypeAssociation. The .msi lane registers
+           none either, so declaring one here would give the Store build a
+           behaviour the direct install does not have. Claiming an extension
+           system-wide is a decision to take on purpose, not as a side effect of
+           changing installers. An app that wants one adds it here and to its
+           .desktop MimeType= in the same commit. -->
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Full trust: this is a packaged Win32 app. Without it any helper process
+         the app spawns (QtWebEngineProcess, a capture backend) cannot start. -->
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>

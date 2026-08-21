@@ -1,0 +1,6 @@
+// The executable's own icon, shown in Explorer, the task bar and Alt-Tab.
+//
+// IDI_ICON1 must be the lowest-numbered icon resource in the binary: Windows
+// picks the first one by ordinal, not by name, so a second icon added above
+// this line silently becomes the app icon.
+1 ICON "@MAUVELY_ICON_PATH@"

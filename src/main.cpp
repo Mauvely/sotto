@@ -11,6 +11,11 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef Q_OS_WIN
+// NOMINMAX and WIN32_LEAN_AND_MEAN are set on the target in CMakeLists.txt.
+#include <windows.h>
+#endif
+
 namespace {
 
 void printHelp()
@@ -33,15 +38,49 @@ void printHelp()
 
 } // namespace
 
+#ifdef Q_OS_WIN
+// ── Getting --help and --version onto a console at all ───────────────────────
+//
+// The target is WIN32_EXECUTABLE, i.e. the GUI subsystem, which is right for a
+// tray app: a console subsystem binary flashes a black window on every launch.
+// The cost is that the process starts with no stdout attached, so `sotto.exe
+// --help` printed absolutely nothing and exited 0 — and CI's smoke test
+// (`sotto --help`) would have "passed" while proving nothing at all.
+//
+// AttachConsole(ATTACH_PARENT_PROCESS) borrows the console of whoever launched
+// it. It fails when there is no parent console — double-clicked from Explorer,
+// or started by the autostart entry — and that is the correct outcome: there is
+// nowhere to print, and we must not conjure a window.
+//
+// Reopening the CRT streams is the part that is easy to miss. Attaching a
+// console does not rebind stdout, which is still the invalid handle the process
+// started with, so printf keeps going nowhere until freopen points it at CONOUT$.
+void attachParentConsole()
+{
+    if (!AttachConsole(ATTACH_PARENT_PROCESS))
+        return;
+    FILE *unused = nullptr;
+    freopen_s(&unused, "CONOUT$", "w", stdout);
+    freopen_s(&unused, "CONOUT$", "w", stderr);
+    freopen_s(&unused, "CONIN$", "r", stdin);
+}
+#endif
+
 int main(int argc, char *argv[])
 {
     // Handle help/version before any GUI so they work headless.
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--help") || !std::strcmp(argv[i], "-h")) {
+#ifdef Q_OS_WIN
+            attachParentConsole();
+#endif
             printHelp();
             return 0;
         }
         if (!std::strcmp(argv[i], "--version")) {
+#ifdef Q_OS_WIN
+            attachParentConsole();
+#endif
             std::puts(SOTTO_VERSION);
             return 0;
         }
@@ -54,7 +93,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv); // QApplication: needed for QSystemTrayIcon
     app.setQuitOnLastWindowClosed(false);
     QGuiApplication::setDesktopFileName(QStringLiteral("net.mauvely.sotto.app"));
-    app.setWindowIcon(QIcon(QStringLiteral(":/icons/sotto.svg")));
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     // Mauvely brand faces: Baloo 2 (display), Inter (body/UI), JetBrains Mono

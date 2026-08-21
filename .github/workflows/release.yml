@@ -1,0 +1,453 @@
+# Ship a release when a version bump lands on main.
+#
+# The trigger is deliberately "merge to main", not a tag: the version already has
+# one source of truth — project(VERSION) in CMakeLists.txt, compiled in as
+# APP_VERSION and compared against by the updater — and asking for a tag as well
+# means two things to keep in step. The gate job reads that version and asks the
+# release service whether it has already shipped. Bump it and merge, and a
+# release goes out. Merge anything else and only the gate runs.
+#
+#   Linux    AppImage ─► R2 ─► POST /api/releases  (format: appimage, primary)
+#            Flatpak  ─► R2 ─► POST /api/releases  (format: flatpak)
+#   Windows  MSI      ─► R2 ─► POST /api/releases  (format: msi, primary)
+#            MSIX     ─► Microsoft Store ─► POST  (format: msstore)
+#
+# Four artifacts, but only two of them are the *update* answer. `/api/releases/
+# latest` returns the primary row per platform, so an installed AppImage is told
+# about the next AppImage and never about a Flatpak it cannot apply. Flatpak and
+# the Store own their own update mechanisms; they are registered so the download
+# button can offer them, not so anything self-updates into them.
+#
+# ── Two Windows builds, not one ─────────────────────────────────────────────
+#
+# The MSI keeps the self-updater; the MSIX must not have it. An MSIX cannot
+# replace its own package, so a Store build that tried to self-update would
+# download successfully, fail to apply, and leave a permanent "restart to
+# update" that never finishes. Hence APP_STORE_BUILD=OFF then =ON, sharing one
+# checkout and one Qt install.
+#
+# ── Nothing here uses GitHub artifact storage ───────────────────────────────
+#
+# No upload-artifact/download-artifact handoff, on purpose. Each build job
+# publishes its own output and reports metadata through job outputs, which are
+# free. Artifact storage is billed against the account's Actions quota, and a
+# full quota fails every workflow in the account — including this one.
+# Self-hosted runners do not change that: the storage is GitHub's.
+#
+# ── Required configuration ──────────────────────────────────────────────────
+#
+# Secrets:
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+#   MAUVELY_RELEASES_TOKEN     — must match the Worker's RELEASES_TOKEN
+#   MSSTORE_TENANT_ID / MSSTORE_CLIENT_ID / MSSTORE_CLIENT_SECRET
+#
+# Variables (same settings page, Variables tab). Not secrets: none is a
+# credential, and being readable in a log is what makes an identity mismatch
+# diagnosable at all.
+#   MSSTORE_SELLER_ID, MSSTORE_PRODUCT_ID, MSSTORE_IDENTITY_NAME,
+#   MSSTORE_PUBLISHER, MSSTORE_PUBLISHER_DISPLAY
+#   PUBLISH_WINDOWS   — "true" to publish the Windows lane. Unset means build
+#                       and verify but do not ship, which is where an app with
+#                       an untested port sits (Sotto). Flip one variable to
+#                       start shipping.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Two releases publishing at once would race on the same version directory,
+  # and Partner Center rejects a second submission while one is pending.
+  group: release
+  cancel-in-progress: false
+
+# ── The only block a fork edits ─────────────────────────────────────────────
+env:
+  APP_KEY: sotto
+  API_BASE: https://mauvely.com
+  # Qt modules beyond qtbase, for aqtinstall.
+  QT_MODULES: 'qtmultimedia qtdeclarative qtshadertools'
+  # Extra configure flags — each app's own APP_REQUIRE_* equivalents.
+  # cpu, not the GPU backends: HIP and CUDA need toolchains no hosted runner
+  # has, and a portable artifact must run on a machine without either. The
+  # GPU builds are for people compiling locally.
+  CONFIGURE_FLAGS: -DSOTTO_GPU=cpu
+  CONFIGURE_FLAGS_LINUX: ''
+  # The CMake option that compiles out the self-updater for a Store build.
+  # Spelled differently per app (CE_STORE_BUILD in Compose, PLAY_STORE_BUILD in
+  # Play) because the macro prefixes were never unified — a rename that would
+  # touch every file in two repos and buy nothing.
+  STORE_BUILD_OPTION: SOTTO_STORE_BUILD
+
+jobs:
+  gate:
+    name: Should we release?
+    # app-base is the template, not a product: it has no feed entry and no
+    # secrets, so publishing it would fail loudly and pointlessly on every merge.
+    # A fork inherits this line harmlessly — its repository is not app-base.
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9][0-9.]*\).*/\1/p' \
+              CMakeLists.txt | head -1)"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Could not read project(VERSION ...) from CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # An empty `items` means it has not shipped. Failing to ask is treated
+          # as "do not release" rather than "release anyway" — publishing twice
+          # off a transient network error is the worse outcome.
+          if ! RESPONSE="$(curl -fsS --retry 3 \
+                "$API_BASE/api/releases?app=$APP_KEY&version=$VERSION")"; then
+            echo "::error::Could not reach the release service at $API_BASE." \
+                 "Refusing to release without knowing whether $VERSION already shipped."
+            exit 1
+          fi
+          COUNT="$(printf '%s' "$RESPONSE" \
+            | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
+
+          if [[ "$COUNT" -gt 0 ]]; then
+            echo "::notice::$APP_KEY $VERSION is already published — nothing to do."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$APP_KEY $VERSION is not published yet — building."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Up front, before either build spends twenty minutes. This used to live in
+      # the publish job, where a missing secret was found *after* both builds had
+      # succeeded — a forty-minute round trip to learn that a value was never
+      # set. An unset R2_ACCOUNT_ID earns a check of its own: it expands to an
+      # empty string inside the endpoint URL and the upload dies on
+      #   aws: [ERROR]: Invalid endpoint: https://.r2.cloudflarestorage.com
+      # which never mentions a secret at all.
+      - name: Check the release configuration is complete
+        if: steps.check.outputs.should_release == 'true'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          MAUVELY_RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+          PUBLISH_WINDOWS: ${{ vars.PUBLISH_WINDOWS }}
+          MSSTORE_PRODUCT_ID: ${{ vars.MSSTORE_PRODUCT_ID }}
+          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY \
+                      MAUVELY_RELEASES_TOKEN; do
+            [[ -n "${!name:-}" ]] || missing+=("$name")
+          done
+          if [[ "${PUBLISH_WINDOWS:-}" == "true" ]]; then
+            for name in MSSTORE_PRODUCT_ID MSSTORE_IDENTITY_NAME MSSTORE_PUBLISHER; do
+              [[ -n "${!name:-}" ]] || missing+=("$name")
+            done
+          fi
+          if (( ${#missing[@]} )); then
+            echo "::error::Release configuration incomplete: ${missing[*]}." \
+                 "Secrets and variables both live under" \
+                 "Settings -> Secrets and variables -> Actions;" \
+                 "the header of this workflow says which is which."
+            exit 1
+          fi
+          # A wrong publisher is the most common first-release failure and the
+          # upload error does not say where to look, so name it here instead.
+          if [[ -n "${MSSTORE_PUBLISHER:-}" && "$MSSTORE_PUBLISHER" != CN=* ]]; then
+            echo "::error::MSSTORE_PUBLISHER must be the Partner Center publisher" \
+                 "identity and start with 'CN=' (got '$MSSTORE_PUBLISHER')." \
+                 "It is a CN=<guid>, not a company name."
+            exit 1
+          fi
+          echo "Release configuration is complete."
+
+  # ── Linux: AppImage + Flatpak → R2 ────────────────────────────────────────
+  linux:
+    name: Linux (AppImage + Flatpak)
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      appimage: ${{ steps.publish.outputs.appimage }}
+      appimage_sha: ${{ steps.publish.outputs.appimage_sha }}
+      flatpak: ${{ steps.publish.outputs.flatpak }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
+            libcups2-dev libfuse2 librsvg2-bin \
+            flatpak flatpak-builder
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          modules: ${{ env.QT_MODULES }}
+          # Deliberately uncached, unlike ci.yml. A release must not be built
+          # from a toolchain archive of unknown provenance: the cache key cannot
+          # express whether its contents are complete. Costs a couple of minutes
+          # and removes the whole class of "green on CI, broken in the artifact".
+          cache: false
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          $CONFIGURE_FLAGS $CONFIGURE_FLAGS_LINUX
+
+      - name: Build
+        run: cmake --build build --config Release --parallel "$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Package
+        run: ./scripts/package.sh --format all --build-dir build --out dist
+
+      - name: Upload and register
+        id: publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+          V: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Upload, THEN register — never the other way round. POST
+          # /api/releases calls R2.head() and refuses if the object is missing
+          # or a different size, so a failure between the two leaves an
+          # unreferenced object at worst, never a feed entry pointing at a 404.
+          # The register call is an upsert, so re-running a failed publish is
+          # safe.
+          publish() {
+            local file="$1" format="$2" primary="$3"
+            local name; name="$(basename "$file")"
+            aws s3 cp "$file" "s3://mauvely-releases/$APP_KEY/$V/$name" \
+              --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+              --only-show-errors
+            cat > meta.json <<EOF
+          {"app":"$APP_KEY","version":"$V","platform":"linux-x86_64",
+           "format":"$format","filename":"$name",
+           "size":$(stat -c%s "$file"),
+           "sha256":"$(sha256sum "$file" | cut -d' ' -f1)",
+           "isPrimary":$primary}
+          EOF
+            curl -fsS -X POST "$API_BASE/api/releases" \
+              -H "authorization: Bearer $RELEASES_TOKEN" \
+              -H 'content-type: application/json' \
+              --data-binary @meta.json
+            echo
+          }
+
+          APPIMAGE="$(ls dist/*.AppImage | head -1)"
+          FLATPAK="$(ls dist/*.flatpak | head -1)"
+
+          # The AppImage is primary: it is the only Linux format that can update
+          # itself in place, so it is what the feed must answer with.
+          publish "$APPIMAGE" appimage true
+          publish "$FLATPAK" flatpak false
+
+          echo "appimage=$(basename "$APPIMAGE")" >> "$GITHUB_OUTPUT"
+          echo "appimage_sha=$(sha256sum "$APPIMAGE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "flatpak=$(basename "$FLATPAK")" >> "$GITHUB_OUTPUT"
+
+  # ── Windows: MSI → R2, MSIX → Microsoft Store ─────────────────────────────
+  windows:
+    name: Windows (MSI + Store)
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: windows-latest
+    outputs:
+      msi: ${{ steps.package.outputs.msi }}
+      published: ${{ steps.package.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          modules: ${{ env.QT_MODULES }}
+          cache: false   # same reason as the Linux job
+
+      - name: Install WiX
+        run: choco install wixtoolset -y --no-progress
+
+      - name: Build and package
+        id: package
+        shell: pwsh
+        env:
+          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          MSSTORE_PUBLISHER_DISPLAY: ${{ vars.MSSTORE_PUBLISHER_DISPLAY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Pass 1 — the direct-download installer. The store-build option is
+          # OFF, so this build keeps its self-updater.
+          $flags = $env:CONFIGURE_FLAGS -split '\s+' | Where-Object { $_ }
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release @flags `
+                "-D$($env:STORE_BUILD_OPTION)=OFF" 
+          cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+          ctest --test-dir build --output-on-failure -C Release
+          ./scripts/package.ps1 -Format msi -BuildDir build -Out dist
+
+          $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
+          "msi=$($msi.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          # Pass 2 — the Store package. Only when there is a listing to submit
+          # to; an app without Partner Center identity stops here having still
+          # proved the MSI lane works.
+          if ($env:MSSTORE_IDENTITY_NAME) {
+            cmake -S . -B build "-D$($env:STORE_BUILD_OPTION)=ON" 
+            cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
+            ./scripts/package.ps1 -Format msix -BuildDir build -Out dist
+            "published=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host "::notice::No MSSTORE_IDENTITY_NAME — skipping the MSIX."
+            "published=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Upload the MSI and register
+        # PUBLISH_WINDOWS unset means "build and verify, do not ship" — where an
+        # app with an untested Windows port sits until someone has installed the
+        # .msi on real hardware and watched an upgrade run without a UAC prompt.
+        if: vars.PUBLISH_WINDOWS == 'true'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+          V: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE="$(ls dist/*.msi | head -1)"
+          NAME="$(basename "$FILE")"
+          aws s3 cp "$FILE" "s3://mauvely-releases/$APP_KEY/$V/$NAME" \
+            --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+            --only-show-errors
+          cat > meta.json <<EOF
+          {"app":"$APP_KEY","version":"$V","platform":"windows-x86_64",
+           "format":"msi","filename":"$NAME",
+           "size":$(stat -c%s "$FILE"),
+           "sha256":"$(sha256sum "$FILE" | cut -d' ' -f1)",
+           "isPrimary":true}
+          EOF
+          curl -fsS -X POST "$API_BASE/api/releases" \
+            -H "authorization: Bearer $RELEASES_TOKEN" \
+            -H 'content-type: application/json' \
+            --data-binary @meta.json
+
+      - name: Set up the Microsoft Store CLI
+        if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.published == 'true'
+        uses: microsoft/setup-msstore-cli@v1
+
+      - name: Submit to the Store
+        if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.published == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Printed so a rejected flag can be read against the version that
+          # rejected it: the CLI's argument names have moved between releases.
+          msstore --version
+          msstore reconfigure \
+            --tenantId '${{ secrets.MSSTORE_TENANT_ID }}' \
+            --clientId '${{ secrets.MSSTORE_CLIENT_ID }}' \
+            --clientSecret '${{ secrets.MSSTORE_CLIENT_SECRET }}' \
+            --sellerId '${{ vars.MSSTORE_SELLER_ID }}'
+          # The listing itself — description, screenshots, age rating, pricing —
+          # is managed in Partner Center and deliberately not here. It is
+          # editorial, it changes on a different schedule from the code, and a
+          # workflow that rewrote it every release would silently overwrite
+          # whatever was last edited by hand.
+          msstore publish "$(ls dist/*.msix | head -1)" \
+            --productId '${{ vars.MSSTORE_PRODUCT_ID }}'
+
+      - name: Register the Store listing
+        # After the submission is accepted, not before: this row is what a
+        # pre-Store install is told when it asks where its updates come from
+        # now, and it must not claim a version Partner Center refused.
+        if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.published == 'true'
+        shell: bash
+        env:
+          RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+          V: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          LISTING="https://apps.microsoft.com/detail/${{ vars.MSSTORE_PRODUCT_ID }}"
+          curl -fsS -X POST "$API_BASE/api/releases" \
+            -H "authorization: Bearer $RELEASES_TOKEN" \
+            -H 'content-type: application/json' \
+            -d "{\"app\":\"$APP_KEY\",\"version\":\"$V\",
+                 \"platform\":\"windows-x86_64\",\"format\":\"msstore\",
+                 \"storeUrl\":\"$LISTING\",\"isPrimary\":false}"
+
+  # ── Tag and report ────────────────────────────────────────────────────────
+  finalise:
+    name: Tag and report
+    needs: [gate, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # to push the tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag the release
+        run: |
+          set -euo pipefail
+          V='${{ needs.gate.outputs.version }}'
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          # Belt and braces: the gate already established this version is new,
+          # but a re-run after a partial failure would otherwise die here.
+          if git rev-parse "v$V" >/dev/null 2>&1; then
+            echo "::notice::tag v$V already exists"
+          else
+            git tag -a "v$V" -m "$APP_KEY $V"
+            git push origin "v$V"
+          fi
+
+      - name: Summary
+        run: |
+          V='${{ needs.gate.outputs.version }}'
+          {
+            echo "### $APP_KEY $V published"
+            echo
+            echo "| Platform | Format | Artifact |"
+            echo "|---|---|---|"
+            echo "| linux-x86_64 | appimage (primary) | \`${{ needs.linux.outputs.appimage }}\`<br>sha256 \`${{ needs.linux.outputs.appimage_sha }}\` |"
+            echo "| linux-x86_64 | flatpak | \`${{ needs.linux.outputs.flatpak }}\` |"
+            echo "| windows-x86_64 | msi (primary) | \`${{ needs.windows.outputs.msi }}\` |"
+            echo "| windows-x86_64 | msstore | ${{ needs.windows.outputs.published }} |"
+            echo
+            echo "A Store submission is **submitted, not live** — certification"
+            echo "takes hours to days and the listing serves the previous version"
+            echo "until it passes. Track it in Partner Center."
+            echo
+            echo "- Product page: $API_BASE/apps/$APP_KEY"
+          } >> "$GITHUB_STEP_SUMMARY"

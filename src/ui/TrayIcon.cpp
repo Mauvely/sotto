@@ -24,7 +24,7 @@ TrayIcon::TrayIcon(App *app, QObject *parent)
     menu->addAction(tr("Quit"), m_app, &App::quit);
 
     m_tray->setContextMenu(menu);
-    m_tray->setIcon(QIcon(QStringLiteral(":/icons/sotto.svg")));
+    m_tray->setIcon(QIcon(QStringLiteral(":/icons/app.svg")));
     m_tray->setToolTip(QStringLiteral("Sotto — local dictation"));
     m_tray->show();
     Notifier::setFallbackTray(m_tray);

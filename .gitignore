@@ -4,3 +4,10 @@ compile_commands.json
 CMakeUserPresets.json
 .vscode/
 .idea/
+
+# Packaging
+dist/
+shots/
+packaging/linux/.cache/
+OLD VERSION/
+.junie/
