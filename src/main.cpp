@@ -1,3 +1,4 @@
+#include "core/apppaths.h"
 #include "core/App.h"
 #include "core/SingleInstance.h"
 #include "core/Settings.h"
@@ -22,7 +23,7 @@ void printHelp()
 {
     std::puts("Sotto " SOTTO_VERSION " — fully local voice dictation\n"
               "\n"
-              "Usage: sotto [option]\n"
+              "Usage: MauvelySotto [option]\n"
               "\n"
               "  (no option)   start in the background (tray + global shortcut)\n"
               "  --toggle      start/stop dictation in the running instance\n"
@@ -86,9 +87,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    QCoreApplication::setOrganizationName(QStringLiteral("sotto"));
-    QCoreApplication::setApplicationName(QStringLiteral("sotto"));
+    QCoreApplication::setOrganizationName(QStringLiteral(APP_ORGANISATION));
+    QCoreApplication::setApplicationName(QStringLiteral(APP_DISPLAY_NAME));
     QCoreApplication::setApplicationVersion(QStringLiteral(SOTTO_VERSION));
+
+    // Before anything constructs a QSettings or reaches for AppDataLocation.
+    // Sotto used organisation "sotto", application "sotto" — its own naming,
+    // not the suite's — so both halves changed. The data directory is the half
+    // that matters here: it holds the downloaded speech models, and re-fetching
+    // those is gigabytes rather than an inconvenience.
+    apppaths::migrateOrganisation(QStringLiteral("sotto"), QStringLiteral("sotto"));
 
     QApplication app(argc, argv); // QApplication: needed for QSystemTrayIcon
     app.setQuitOnLastWindowClosed(false);

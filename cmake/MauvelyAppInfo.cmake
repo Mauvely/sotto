@@ -187,6 +187,13 @@ macro(mauvely_app_info)
             set(_scope PRIVATE)
         endif()
         target_compile_definitions(${_t} ${_scope}
+            # The QSettings organisation, and therefore the parent directory of
+            # every app's config and data. Not an argument: it is the same for
+            # every app by definition, and it is a coupling point — the
+            # org-level Handoff/ directory is how Snap passes a capture to
+            # Compose, so an app that disagreed about this string would silently
+            # stop talking to its siblings.
+            APP_ORGANISATION="Mauvely"
             APP_KEY="${AI_KEY}"
             APP_ID="${AI_APP_ID}"
             APP_DISPLAY_NAME="${AI_DISPLAY_NAME}"

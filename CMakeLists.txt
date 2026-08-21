@@ -134,9 +134,10 @@ else()
     )
 endif()
 
-qt_add_executable(sotto
+qt_add_executable(MauvelySotto
     src/main.cpp
     src/core/App.h                src/core/App.cpp
+    src/core/apppaths.h           src/core/apppaths.cpp
     src/core/Settings.h           src/core/Settings.cpp
     src/core/SingleInstance.h     src/core/SingleInstance.cpp
     src/core/Notifier.h           src/core/Notifier.cpp
@@ -161,7 +162,7 @@ qt_add_executable(sotto
 # processes QML_FILES.
 set_source_files_properties(qml/Brand.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(sotto
+qt_add_qml_module(MauvelySotto
     URI Sotto
     VERSION 1.0
     RESOURCE_PREFIX /qt/qml # Qt 6.5+ default; pinned so 6.4 builds match
@@ -178,34 +179,34 @@ qt_add_qml_module(sotto
         qml/SButton.qml
 )
 
-target_include_directories(sotto PRIVATE src)
-target_link_libraries(sotto PRIVATE
+target_include_directories(MauvelySotto PRIVATE src)
+target_link_libraries(MauvelySotto PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2
     Qt6::Multimedia Qt6::Network
     whisper
 )
 
 if(WIN32)
-    target_link_libraries(sotto PRIVATE user32)
-    target_compile_definitions(sotto PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    set_target_properties(sotto PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_libraries(MauvelySotto PRIVATE user32)
+    target_compile_definitions(MauvelySotto PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    set_target_properties(MauvelySotto PROPERTIES WIN32_EXECUTABLE TRUE)
 else()
-    target_link_libraries(sotto PRIVATE Qt6::DBus)
+    target_link_libraries(MauvelySotto PRIVATE Qt6::DBus)
 endif()
 
-target_compile_definitions(sotto PRIVATE
+target_compile_definitions(MauvelySotto PRIVATE
     SOTTO_VERSION="${PROJECT_VERSION}"
     SOTTO_GPU_BACKEND="${SOTTO_GPU}"
 )
 
 if(SOTTO_HAVE_LAYER_SHELL)
-    target_link_libraries(sotto PRIVATE LayerShellQt::Interface)
-    target_compile_definitions(sotto PRIVATE SOTTO_HAVE_LAYER_SHELL)
+    target_link_libraries(MauvelySotto PRIVATE LayerShellQt::Interface)
+    target_compile_definitions(MauvelySotto PRIVATE SOTTO_HAVE_LAYER_SHELL)
 endif()
 
 if(SOTTO_HAVE_KWINDOWSYSTEM)
-    target_link_libraries(sotto PRIVATE KF6::WindowSystem)
-    target_compile_definitions(sotto PRIVATE SOTTO_HAVE_KWINDOWSYSTEM)
+    target_link_libraries(MauvelySotto PRIVATE KF6::WindowSystem)
+    target_compile_definitions(MauvelySotto PRIVATE SOTTO_HAVE_KWINDOWSYSTEM)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -227,7 +228,7 @@ configure_file(packaging/app.svg
                "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/app.svg" COPYONLY)
 
 include(GNUInstallDirs)
-install(TARGETS sotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS MauvelySotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Freedesktop integration — the .desktop file, the AppStream metainfo and the
 # hicolor icons — is installed by mauvely_app_info() below. All of it derives
 # from APP_ID, which is also what src/main.cpp and src/core/Settings.cpp read,
@@ -246,13 +247,13 @@ install(TARGETS sotto RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # real-hardware time, not because the packaging is missing. It's the same
 # module Compose and Snap use, both of which already ship on Windows.
 if(SOTTO_STORE_BUILD)
-    target_compile_definitions(sotto PRIVATE SOTTO_STORE_BUILD)
+    target_compile_definitions(MauvelySotto PRIVATE SOTTO_STORE_BUILD)
 endif()
 
 include(cmake/MauvelyAppInfo.cmake)
 mauvely_app_info(
     KEY          sotto
-    BINARY       sotto
+    BINARY       MauvelySotto
     DISPLAY_NAME "Sotto"
     GENERIC_NAME "Local dictation"
     APP_ID       net.mauvely.sotto.app

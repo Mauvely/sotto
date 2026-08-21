@@ -28,7 +28,7 @@ flowchart LR
     INJ --> FOCUSED[focused app]
 
     MODELS[ModelManager<br/>ggml downloads] --> ENG
-    CFG[Settings<br/>~/.config/sotto/sotto.conf] --- APP
+    CFG[Settings<br/>~/.config/Mauvely/Sotto.conf] --- APP
 ```
 
 ## Components

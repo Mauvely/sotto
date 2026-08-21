@@ -70,13 +70,13 @@ cd sotto
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSOTTO_GPU=hip
 cmake --build build -j$(nproc)
 
-./build/bin/sotto        # first run opens Settings
+./build/bin/MauvelySotto  # first run opens Settings
 # optional:
 sudo cmake --install build
 ```
 
 whisper.cpp (pinned release) is fetched at configure time; everything is linked
-statically into the `sotto` binary.
+statically into the `MauvelySotto` binary.
 
 ## Packaging
 
@@ -189,7 +189,7 @@ opacity so your compositor's blur can shine through:
 
 ### Dictating without inserting
 
-Open the **Notepad** (tray menu or `sotto --notepad`), press *Record*, and the
+Open the **Notepad** (tray menu or `MauvelySotto --notepad`), press *Record*, and the
 formatted text accumulates in the window with a Copy button. That and the
 focused app are the only two dictation targets — there is no chat-style
 transcript window keeping a scrollback of past dictations.
@@ -197,10 +197,10 @@ transcript window keeping a scrollback of past dictations.
 ### CLI / scripting
 
 ```
-sotto --toggle     # start/stop dictation (bind this to any compositor shortcut)
-sotto --settings   # open settings
-sotto --notepad    # open the notepad
-sotto --quit
+MauvelySotto --toggle     # start/stop dictation (bind this to any compositor shortcut)
+MauvelySotto --settings   # open settings
+MauvelySotto --notepad    # open the notepad
+MauvelySotto --quit
 ```
 
 A running instance is controlled over D-Bus (`net.mauvely.Sotto` at
