@@ -130,6 +130,16 @@ endfunction()
 # needs the .exe to be there to read its imports.
 function(_mauvely_deploy_qt_runtime target)
     _mauvely_find_windeployqt(_wdq)
+
+    # Only pass --qmldir where there is QML to find. An app with no .qml files
+    # gains nothing from the scan and the flag is harmless either way, but
+    # pointing it at a tree with no imports makes windeployqt's output confusing
+    # to read when something else goes wrong.
+    file(GLOB_RECURSE _qml_files "${CMAKE_CURRENT_SOURCE_DIR}/*.qml")
+    set(_qml_source_dir "")
+    if(_qml_files)
+        set(_qml_source_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
     if(NOT _wdq)
         message(FATAL_ERROR
             "mauvely_configure_packaging: windeployqt was not found, so the "
@@ -169,8 +179,20 @@ else()
 endif()
 
 message(STATUS "Deploying the Qt runtime beside ${_exe}")
+# --qmldir matters for a QML app and is inert for a Widgets one. windeployqt
+# scans the *source* tree for imports to work out which QML modules to copy;
+# without it a Qt Quick app installs with its Qt DLLs and none of its QML, and
+# then dies at startup on "module Sotto is not installed" — an .msi that
+# installs cleanly and cannot run, which is the exact failure the rest of this
+# file exists to prevent. Sotto is the only Qt Quick app in the suite, so this
+# would have gone unnoticed until its first Windows release.
+set(_qmldir_flag "")
+if(NOT "@_qml_source_dir@" STREQUAL "")
+    set(_qmldir_flag "--qmldir" "@_qml_source_dir@")
+endif()
+
 execute_process(
-    COMMAND "${_wdq}" ${_cfg_flag} "${_exe}"
+    COMMAND "${_wdq}" ${_cfg_flag} ${_qmldir_flag} "${_exe}"
     RESULT_VARIABLE _wdq_status)
 if(NOT _wdq_status EQUAL 0)
     message(FATAL_ERROR
