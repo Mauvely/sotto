@@ -73,9 +73,13 @@ endif()
 # KWindowSystem (optional): real blur-behind on KWin when the HUD is
 # translucent. Present on Arch as `kwindowsystem`.
 # ---------------------------------------------------------------------------
+# NOT WIN32, like LayerShellQt above. KF6WindowSystem does build on Windows, so
+# on a machine that happened to have it the blur path would compile and link —
+# and then ask KWin, which is not there, for an effect Windows spells Mica. The
+# guard states the platform rather than relying on the package being absent.
 set(SOTTO_HAVE_KWINDOWSYSTEM OFF)
 find_package(KF6WindowSystem QUIET)
-if(KF6WindowSystem_FOUND)
+if(KF6WindowSystem_FOUND AND NOT WIN32)
     set(SOTTO_HAVE_KWINDOWSYSTEM ON)
     message(STATUS "KF6WindowSystem found: translucent HUD can request KWin blur-behind")
 endif()
