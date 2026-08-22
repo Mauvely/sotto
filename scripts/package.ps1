@@ -67,6 +67,12 @@ $binary    = $info.binary
 $version   = $info.version
 $supported = $info.formats.windows
 
+if (-not $supported) {
+    Write-Host 'This app does not ship for Windows — see PLATFORMS in CMakeLists.txt.'
+    Write-Host 'Linux artifacts are built by scripts/package.sh on Linux.'
+    exit 0
+}
+
 function Test-Wanted([string]$name) {
     if ($Format -ne 'all' -and $Format -ne $name) { return $false }
     if ($supported -notcontains $name) {

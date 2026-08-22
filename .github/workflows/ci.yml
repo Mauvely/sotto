@@ -38,9 +38,6 @@ env:
   # Extra configure flags. Each app turns its own optional dependencies into
   # hard errors here, so a missing module fails the build instead of silently
   # shipping a degraded binary.
-  # cpu, not the GPU backends: HIP and CUDA need toolchains no hosted runner
-  # has, and a portable artifact must run on a machine without either. The
-  # GPU builds are for people compiling locally.
   CONFIGURE_FLAGS: -DSOTTO_GPU=cpu
   CONFIGURE_FLAGS_LINUX: ''
 
@@ -123,19 +120,36 @@ jobs:
       - name: Smoke-run (Linux)
         if: runner.os == 'Linux'
         # Sotto has no offscreen screenshot harness: its only always-present
-        # window is a 440x64 HUD that is hidden unless dictation is running, so
-        # there is no chrome to grab. `--version` at least proves the binary
+        # window is a 440x64 HUD that stays hidden unless dictation is running,
+        # so there is no chrome to grab. `--version` at least proves the binary
         # links, starts and reaches main() with the whisper.cpp static library
         # attached — which is the part most likely to break.
         run: |
           mkdir -p shots
           BIN="$(python3 -c 'import json;print(json.load(open("build/app-info.json"))["binary"])')"
           EXE="build/bin/Release/$BIN"; [ -x "$EXE" ] || EXE="build/bin/$BIN"
-          [ -x "$EXE" ] || EXE="build/$BIN"
           QT_QPA_PLATFORM=offscreen "$EXE" --version
 
+      - name: Which platforms does this app target?
+        id: targets
+        shell: bash
+        # From build/app-info.json, so the answer lives with the app rather than
+        # being repeated in a workflow. Snap targets Windows only: Wayland has no
+        # workable story for a third-party screenshot tool, since every capture
+        # raises the compositor's own source-selection prompt.
+        #
+        # The build and the tests above still ran. Not packaging a platform is
+        # not a reason to stop compiling for it — that is how portable code rots.
+        run: |
+          python3 - <<'PYEOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          info = json.load(open("build/app-info.json"))
+          key = "linux" if os.environ["RUNNER_OS"] == "Linux" else "windows"
+          print(f"ships={'true' if info['formats'][key] else 'false'}")
+          PYEOF
+
       - name: Package (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.targets.outputs.ships == 'true'
         # AppImage only. A Flatpak build pulls a ~1.5 GB runtime and an SDK and
         # then compiles Qt code inside it, which is twenty minutes CI does not
         # need to spend on a pull request — release.yml does build it, so a
@@ -143,19 +157,17 @@ jobs:
         run: ./scripts/package.sh --format appimage --build-dir build
 
       - name: Smoke-run the AppImage (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.targets.outputs.ships == 'true'
         # The artifact, not the build-tree binary. Everything up to here proves
         # the *build* works; this is the only step that proves the thing a user
-        # downloads actually starts — with the bundled Qt, the bundled fonts and
-        # the statically linked whisper.cpp, none of which the build tree
-        # exercises. It relies on the offscreen platform plugin being bundled;
-        # see build-appimage.sh, which adds it for exactly this.
+        # downloads actually starts. It relies on the offscreen platform plugin
+        # being bundled — see build-appimage.sh, which adds it for exactly this.
         run: |
           APPIMAGE="$(ls build/*.AppImage | head -1)"
           QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 "$APPIMAGE" --version
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.targets.outputs.ships == 'true'
         shell: pwsh
         # WiX v3's candle/light are not on windows-latest by default. MSI only
         # here: the MSIX needs Partner Center identity that a fork of this

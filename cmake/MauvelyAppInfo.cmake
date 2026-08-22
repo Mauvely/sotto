@@ -36,6 +36,7 @@
 #       APP_ID       net.mauvely.appbase.app    # reverse-DNS id
 #       DESCRIPTION  "${PROJECT_DESCRIPTION}"
 #       CATEGORIES   Utility Development         # freedesktop Categories=, a list
+#       PLATFORMS    linux windows               # what this app ships for
 #       SUMMARY      "One sentence for the store listing."
 #       UPGRADE_GUID "………"                      # fresh per app, NEVER changes
 #       ICON         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/appbase.ico"
@@ -59,16 +60,34 @@ set(_MAUVELY_APPINFO_DIR "${CMAKE_CURRENT_LIST_DIR}")
 # and both GitHub workflows. It exists so a shell script never has to re-derive
 # the binary name by grepping CMakeLists.txt — the other half of the Play bug.
 function(_mauvely_write_app_info)
+    # Built as strings rather than with a JSON library because CMake has none,
+    # and because the shape is small enough that a generator is more code than
+    # the thing it generates.
+    set(_platforms "")
+    set(_linux_formats "")
+    set(_windows_formats "")
+    if("linux" IN_LIST MAUVELY_APP_PLATFORMS)
+        set(_platforms "\"linux-x86_64\"")
+        set(_linux_formats "\"appimage\", \"flatpak\"")
+    endif()
+    if("windows" IN_LIST MAUVELY_APP_PLATFORMS)
+        if(_platforms)
+            string(APPEND _platforms ", ")
+        endif()
+        string(APPEND _platforms "\"windows-x86_64\"")
+        set(_windows_formats "\"msi\", \"msix\"")
+    endif()
+
     set(_json "{
   \"key\": \"${MAUVELY_APP_KEY}\",
   \"binary\": \"${MAUVELY_APP_BINARY}\",
   \"displayName\": \"${MAUVELY_APP_DISPLAY_NAME}\",
   \"appId\": \"${MAUVELY_APP_ID}\",
   \"version\": \"${MAUVELY_APP_VERSION}\",
-  \"platforms\": [\"linux-x86_64\", \"windows-x86_64\"],
+  \"platforms\": [${_platforms}],
   \"formats\": {
-    \"linux\": [\"appimage\", \"flatpak\"],
-    \"windows\": [\"msi\", \"msix\"]
+    \"linux\": [${_linux_formats}],
+    \"windows\": [${_windows_formats}]
   }
 }
 ")
@@ -84,7 +103,12 @@ macro(mauvely_app_info)
     # "Utility;Development;" arrives as *two* arguments, a one-value keyword
     # keeps the first, and the rest are silently dropped into UNPARSED_ARGUMENTS.
     # That produced `Categories=Utility` in the .desktop file with no warning.
-    set(_ai_multi_value CATEGORIES)
+    # PLATFORMS is `linux`, `windows`, or both. It is what makes the packaging
+    # scripts and both workflows refuse a format the app does not target, rather
+    # than every app pretending to want all four. Snap is Windows-only: Wayland
+    # has no workable story for a third-party screenshot tool, since every
+    # capture raises the compositor's own source-selection prompt.
+    set(_ai_multi_value CATEGORIES PLATFORMS)
     cmake_parse_arguments(AI "${_ai_options}" "${_ai_one_value}"
                           "${_ai_multi_value}" ${ARGN})
 
@@ -103,6 +127,16 @@ macro(mauvely_app_info)
             "reverse-DNS id (net.mauvely.<key>.app) before building.")
     endif()
 
+    if(NOT AI_PLATFORMS)
+        set(AI_PLATFORMS linux windows)
+    endif()
+    foreach(_p IN LISTS AI_PLATFORMS)
+        if(NOT _p STREQUAL "linux" AND NOT _p STREQUAL "windows")
+            message(FATAL_ERROR "mauvely_app_info: unknown PLATFORMS value '${_p}' "
+                                "(expected linux and/or windows)")
+        endif()
+    endforeach()
+
     if(NOT AI_CATEGORIES)
         set(AI_CATEGORIES Utility)
     endif()
@@ -112,6 +146,7 @@ macro(mauvely_app_info)
     # it is added here rather than asked for at the call site, where forgetting
     # it produces a .desktop file that some launchers accept and others ignore.
     set(MAUVELY_APP_CATEGORIES "${AI_CATEGORIES};")
+    set(MAUVELY_APP_PLATFORMS "${AI_PLATFORMS}")
     if(NOT AI_SUMMARY)
         set(AI_SUMMARY "${AI_DESCRIPTION}")
     endif()

@@ -66,6 +66,15 @@ py() { python3 -c "$1" "$INFO" "${2:-}"; }
 BINARY="$(py 'import json,sys;print(json.load(open(sys.argv[1]))["binary"])')"
 SUPPORTED="$(py 'import json,sys;print(" ".join(json.load(open(sys.argv[1]))["formats"]["linux"]))')"
 
+# An app that ships for Windows only has an empty Linux format list, and
+# "does not target appimage (targets: )" is a worse thing to read than the
+# actual answer.
+if [[ -z "$SUPPORTED" ]]; then
+    echo "This app does not ship for Linux — see PLATFORMS in CMakeLists.txt." >&2
+    echo "Windows artifacts are built by scripts/package.ps1 on Windows." >&2
+    exit 0
+fi
+
 wanted() {
     [[ "$FORMAT" == "all" || "$FORMAT" == "$1" ]] || return 1
     # `all` means "everything this app targets", so an app that drops a format

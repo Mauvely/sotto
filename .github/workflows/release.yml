@@ -70,9 +70,6 @@ env:
   # Qt modules beyond qtbase, for aqtinstall.
   QT_MODULES: 'qtmultimedia qtdeclarative qtshadertools'
   # Extra configure flags — each app's own APP_REQUIRE_* equivalents.
-  # cpu, not the GPU backends: HIP and CUDA need toolchains no hosted runner
-  # has, and a portable artifact must run on a machine without either. The
-  # GPU builds are for people compiling locally.
   CONFIGURE_FLAGS: -DSOTTO_GPU=cpu
   CONFIGURE_FLAGS_LINUX: ''
   # The CMake option that compiles out the self-updater for a Store build.
@@ -219,11 +216,31 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
 
+      - name: Which platforms does this app target?
+        id: targets
+        shell: bash
+        # From build/app-info.json, so the answer lives with the app rather than
+        # being repeated in a workflow. Snap targets Windows only: Wayland has no
+        # workable story for a third-party screenshot tool, since every capture
+        # raises the compositor's own source-selection prompt.
+        #
+        # The build and the tests above still ran. Not packaging a platform is
+        # not a reason to stop compiling for it — that is how portable code rots.
+        run: |
+          python3 - <<'PYEOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          info = json.load(open("build/app-info.json"))
+          key = "linux" if os.environ["RUNNER_OS"] == "Linux" else "windows"
+          print(f"ships={'true' if info['formats'][key] else 'false'}")
+          PYEOF
+
       - name: Package
+        if: steps.targets.outputs.ships == 'true'
         run: ./scripts/package.sh --format all --build-dir build --out dist
 
       - name: Upload and register
         id: publish
+        if: steps.targets.outputs.ships == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -306,6 +323,19 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          # Does this app ship for Windows at all? The answer lives in
+          # app-info.json, beside the app, rather than in this workflow.
+          # Building and testing above still happened: not packaging a platform
+          # is not a reason to stop compiling for it.
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          $info = Get-Content -Raw build/app-info.json | ConvertFrom-Json
+          if (-not $info.formats.windows) {
+            Write-Host "::notice::This app does not ship for Windows — skipping packaging."
+            "ships=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          "ships=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
           # Pass 1 — the direct-download installer. The store-build option is
           # OFF, so this build keeps its self-updater.
           $flags = $env:CONFIGURE_FLAGS -split '\s+' | Where-Object { $_ }
@@ -335,7 +365,7 @@ jobs:
         # PUBLISH_WINDOWS unset means "build and verify, do not ship" — where an
         # app with an untested Windows port sits until someone has installed the
         # .msi on real hardware and watched an upgrade run without a UAC prompt.
-        if: vars.PUBLISH_WINDOWS == 'true'
+        if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.ships == 'true'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
