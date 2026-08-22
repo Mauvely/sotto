@@ -68,7 +68,7 @@ env:
   APP_KEY: sotto
   API_BASE: https://mauvely.com
   # Qt modules beyond qtbase, for aqtinstall.
-  QT_MODULES: 'qtmultimedia qtdeclarative qtshadertools'
+  QT_MODULES: 'qtmultimedia qtshadertools'
   # Extra configure flags — each app's own APP_REQUIRE_* equivalents.
   CONFIGURE_FLAGS: -DSOTTO_GPU=cpu
   CONFIGURE_FLAGS_LINUX: ''

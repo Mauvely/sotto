@@ -34,7 +34,7 @@ env:
   # hard-depends on Qt6WebChannel and Qt6Positioning, which aqt does not pull in
   # on its own — without them find_package(WebEngineWidgets) fails as a unit and
   # the app silently falls back to a placeholder.
-  QT_MODULES: 'qtmultimedia qtdeclarative qtshadertools'
+  QT_MODULES: 'qtmultimedia qtshadertools'
   # Extra configure flags. Each app turns its own optional dependencies into
   # hard errors here, so a missing module fails the build instead of silently
   # shipping a degraded binary.
