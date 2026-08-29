@@ -31,12 +31,14 @@
 #       BINARY       MauvelyAppBase             # executable + artifact basename
 #       CORE         appbase_core               # the OBJECT library, if there is one
 #       DISPLAY_NAME "Mauvely App Base"
+#       SHORT_NAME   "App Base"                 # without the company name
 #       GENERIC_NAME "Desktop App Template"     # the .desktop GenericName=
 #       EXEC_ARGS    "%f"                       # only if argv is really read
 #       APP_ID       net.mauvely.appbase.app    # reverse-DNS id
 #       DESCRIPTION  "${PROJECT_DESCRIPTION}"
 #       CATEGORIES   Utility Development         # freedesktop Categories=, a list
 #       PLATFORMS    linux windows               # what this app ships for
+#       EXTRA_TARGETS core_smoke                 # only where tests are their own targets
 #       SUMMARY      "One sentence for the store listing."
 #       UPGRADE_GUID "………"                      # fresh per app, NEVER changes
 #       ICON         "${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/appbase.ico"
@@ -96,8 +98,8 @@ endfunction()
 
 macro(mauvely_app_info)
     set(_ai_options PER_USER)
-    set(_ai_one_value KEY BINARY CORE DISPLAY_NAME GENERIC_NAME APP_ID
-                      DESCRIPTION SUMMARY EXEC_ARGS UPGRADE_GUID ICON)
+    set(_ai_one_value KEY BINARY CORE DISPLAY_NAME SHORT_NAME GENERIC_NAME
+                      APP_ID DESCRIPTION SUMMARY EXEC_ARGS UPGRADE_GUID ICON)
     # CATEGORIES is multi-value, and it has to be. cmake_parse_arguments reads
     # ${ARGN}, which is an unquoted expansion — so a single argument written as
     # "Utility;Development;" arrives as *two* arguments, a one-value keyword
@@ -108,7 +110,7 @@ macro(mauvely_app_info)
     # than every app pretending to want all four. Snap is Windows-only: Wayland
     # has no workable story for a third-party screenshot tool, since every
     # capture raises the compositor's own source-selection prompt.
-    set(_ai_multi_value CATEGORIES PLATFORMS)
+    set(_ai_multi_value CATEGORIES PLATFORMS EXTRA_TARGETS)
     cmake_parse_arguments(AI "${_ai_options}" "${_ai_one_value}"
                           "${_ai_multi_value}" ${ARGN})
 
@@ -152,6 +154,18 @@ macro(mauvely_app_info)
     endif()
     if(NOT AI_GENERIC_NAME)
         set(AI_GENERIC_NAME "${AI_DISPLAY_NAME}")
+    endif()
+    # The product's name without the company's — "Compose", not "Mauvely
+    # Compose". Mirrors the `short` field `website-main/shared/apps.ts` already
+    # carries, and it is what `branding::productName` builds an organisation's
+    # name from.
+    #
+    # Stated rather than derived by stripping "Mauvely " off DISPLAY_NAME,
+    # because "Sotto by Mauvely" is the entry a prefix-strip gets wrong — it
+    # would produce "Sotto by Northgate", which names two companies and belongs
+    # to neither.
+    if(NOT AI_SHORT_NAME)
+        set(AI_SHORT_NAME "${AI_DISPLAY_NAME}")
     endif()
 
     # `%f` and friends. Only pass this if the app really does accept a file
@@ -215,6 +229,14 @@ macro(mauvely_app_info)
     if(AI_CORE)
         list(APPEND _ai_targets "${AI_CORE}")
     endif()
+    # EXTRA_TARGETS is for the repos with no OBJECT library — Compose and Play
+    # build each test binary from its own explicit source list, so nothing
+    # carries these macros to them and `APP_SHORT_NAME` silently falls back to
+    # the "Mauvely" default in branding.h. The symptom is a test asserting on
+    # "Northgate Mauvely Play", which is what caught it.
+    if(AI_EXTRA_TARGETS)
+        list(APPEND _ai_targets ${AI_EXTRA_TARGETS})
+    endif()
     foreach(_t IN LISTS _ai_targets)
         if(_t STREQUAL AI_CORE)
             set(_scope PUBLIC)
@@ -232,6 +254,7 @@ macro(mauvely_app_info)
             APP_KEY="${AI_KEY}"
             APP_ID="${AI_APP_ID}"
             APP_DISPLAY_NAME="${AI_DISPLAY_NAME}"
+            APP_SHORT_NAME="${AI_SHORT_NAME}"
             APP_DESCRIPTION="${AI_DESCRIPTION}"
             APP_VERSION="${PROJECT_VERSION}"
         )
