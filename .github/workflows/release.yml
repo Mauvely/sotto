@@ -56,6 +56,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      republish:
+        description: 'Rebuild and re-upload every platform, even ones already registered'
+        type: boolean
+        default: false
 
 concurrency:
   # Two releases publishing at once would race on the same version directory,
@@ -88,10 +93,18 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
       should_release: ${{ steps.check.outputs.should_release }}
+      need_linux: ${{ steps.check.outputs.need_linux }}
+      need_windows: ${{ steps.check.outputs.need_windows }}
     steps:
       - uses: actions/checkout@v4
 
       - id: check
+        env:
+          # `workflow_dispatch` with republish=true asks the platforms to be
+          # built and uploaded again even where a row exists. For the case where
+          # a row is present but the object behind it is not — a bucket
+          # lifecycle rule, a hand-deleted key — which nothing else can repair.
+          REPUBLISH: ${{ github.event.inputs.republish }}
         run: |
           set -euo pipefail
           VERSION="$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9][0-9.]*\).*/\1/p' \
@@ -102,23 +115,49 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # An empty `items` means it has not shipped. Failing to ask is treated
-          # as "do not release" rather than "release anyway" — publishing twice
-          # off a transient network error is the worse outcome.
+          # Failing to ask is treated as "do not release" rather than "release
+          # anyway" — publishing twice off a transient network error is the
+          # worse outcome.
           if ! RESPONSE="$(curl -fsS --retry 3 \
                 "$API_BASE/api/releases?app=$APP_KEY&version=$VERSION")"; then
             echo "::error::Could not reach the release service at $API_BASE." \
-                 "Refusing to release without knowing whether $VERSION already shipped."
+                 "Refusing to release without knowing what $VERSION already has."
             exit 1
           fi
-          COUNT="$(printf '%s' "$RESPONSE" \
-            | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))')"
 
-          if [[ "$COUNT" -gt 0 ]]; then
-            echo "::notice::$APP_KEY $VERSION is already published — nothing to do."
+          # ── Per platform, not per version ──────────────────────────────
+          #
+          # This used to ask "does *any* row exist for this version?" and skip
+          # the whole release if one did. A run where Linux published and
+          # Windows did not then left a version that could never be completed:
+          # the next run saw the Linux rows, concluded the version had shipped,
+          # and skipped both lanes. The only escape was a version bump, and
+          # meanwhile the feed served an update to half its users.
+          #
+          # Compose 0.5.3 sat in exactly that state — an AppImage and a Flatpak
+          # published, no Windows row, and a green build every time.
+          #
+          # Asking per platform makes a re-run finish what a failed run started,
+          # which is the property a release job most needs and the one it did
+          # not have.
+          eval "$(printf '%s' "$RESPONSE" | python3 -c '
+          import json, os, sys
+          items = json.load(sys.stdin)["items"]
+          have = {i["platform"] for i in items if i.get("isPrimary")}
+          again = os.environ.get("REPUBLISH") == "true"
+          for gh, platform in (("linux", "linux-x86_64"), ("windows", "windows-x86_64")):
+              need = again or platform not in have
+              print(f"NEED_{gh.upper()}={str(need).lower()}")
+          ')"
+
+          echo "need_linux=$NEED_LINUX" >> "$GITHUB_OUTPUT"
+          echo "need_windows=$NEED_WINDOWS" >> "$GITHUB_OUTPUT"
+
+          if [[ "$NEED_LINUX" == "false" && "$NEED_WINDOWS" == "false" ]]; then
+            echo "::notice::$APP_KEY $VERSION has a primary row on every platform — nothing to do."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::$APP_KEY $VERSION is not published yet — building."
+            echo "::notice::$APP_KEY $VERSION needs: linux=$NEED_LINUX windows=$NEED_WINDOWS"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -173,8 +212,12 @@ jobs:
   linux:
     name: Linux (AppImage + Flatpak)
     needs: gate
-    if: needs.gate.outputs.should_release == 'true'
+    if: needs.gate.outputs.need_linux == 'true'
     runs-on: ubuntu-latest
+    # Six hours is the default and this job takes twenty-five minutes. A hung
+    # runner spending the rest of the account's budget is the failure this
+    # prevents; the number is generous, not tight.
+    timeout-minutes: 90
     outputs:
       appimage: ${{ steps.publish.outputs.appimage }}
       appimage_sha: ${{ steps.publish.outputs.appimage_sha }}
@@ -183,6 +226,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Make room on the runner
+        # ubuntu-latest arrives with about 25 GB free and roughly 25 GB of
+        # preinstalled toolchains this build will never touch. Qt with
+        # QtWebEngine is ~5 GB, the build tree is several more, and
+        # flatpak-builder then pulls the KDE runtime *and* SDK — so the job
+        # finishes close enough to the line that a slightly larger Qt release
+        # tips it over, and a disk-full failure reads as a compiler error
+        # somewhere in the middle of the build.
+        #
+        # The `df` either side is the point as much as the deletion: if this
+        # ever fails for space again, the log says how much there was.
+        run: |
+          echo "Before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android \
+                      /usr/share/dotnet \
+                      /opt/ghc \
+                      /usr/local/.ghcup \
+                      /usr/local/share/powershell \
+                      /usr/share/swift \
+                      "$AGENT_TOOLSDIRECTORY/CodeQL" || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "After:"; df -h / | tail -1
 
       - name: Install Linux dependencies
         run: |
@@ -245,6 +311,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          # A transient 5xx from R2 used to fail a job that had already spent
+          # twenty-five minutes building. Adaptive mode backs off rather than
+          # hammering, which is what a large multipart upload wants.
+          AWS_MAX_ATTEMPTS: '5'
+          AWS_RETRY_MODE: adaptive
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
           V: ${{ needs.gate.outputs.version }}
@@ -260,9 +331,29 @@ jobs:
           publish() {
             local file="$1" format="$2" primary="$3"
             local name; name="$(basename "$file")"
-            aws s3 cp "$file" "s3://mauvely-releases/$APP_KEY/$V/$name" \
-              --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+            local key="$APP_KEY/$V/$name"
+            local endpoint="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+
+            aws s3 cp "$file" "s3://mauvely-releases/$key" \
+              --endpoint-url "$endpoint" \
               --only-show-errors
+
+            # Ask R2 for it back before telling the feed it exists.
+            #
+            # The Worker already refuses to register an object it cannot head,
+            # so this is not the only guard — but it turns "the API rejected
+            # the registration" into "the upload did not land", which is the
+            # difference between a five-minute diagnosis and an hour of reading
+            # Worker logs. It also catches a truncated upload, which a
+            # successful `cp` exit code does not.
+            local remote
+            remote="$(aws s3api head-object --bucket mauvely-releases --key "$key" \
+                        --endpoint-url "$endpoint" --query ContentLength --output text)"
+            local local_size; local_size="$(stat -c%s "$file")"
+            if [[ "$remote" != "$local_size" ]]; then
+              echo "::error::$name uploaded as $remote bytes, expected $local_size"
+              return 1
+            fi
             cat > meta.json <<EOF
           {"app":"$APP_KEY","version":"$V","platform":"linux-x86_64",
            "format":"$format","filename":"$name",
@@ -293,7 +384,8 @@ jobs:
   windows:
     name: Windows (MSI + Store)
     needs: gate
-    if: needs.gate.outputs.should_release == 'true'
+    timeout-minutes: 90
+    if: needs.gate.outputs.need_windows == 'true'
     runs-on: windows-latest
     outputs:
       msi: ${{ steps.package.outputs.msi }}
@@ -361,16 +453,41 @@ jobs:
             "published=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
-      - name: Upload the MSI and register
+      - name: Say that Windows was built but not shipped
         # PUBLISH_WINDOWS unset means "build and verify, do not ship" — where an
         # app with an untested Windows port sits until someone has installed the
         # .msi on real hardware and watched an upgrade run without a UAC prompt.
+        #
+        # That is a legitimate state and it used to be a silent one: the job
+        # went green, the summary listed the MSI it had not uploaded, and the
+        # only way to notice was to query the feed. An unset variable should
+        # look different from a successful publish.
+        if: vars.PUBLISH_WINDOWS != 'true' && steps.package.outputs.ships == 'true'
+        shell: bash
+        run: |
+          {
+            echo "### Windows built, not shipped"
+            echo
+            echo "\`PUBLISH_WINDOWS\` is not \`true\` in this repository's"
+            echo "variables, so the MSI was built and verified but not uploaded."
+            echo "Nothing on windows-x86_64 was registered for this version."
+            echo
+            echo "Set the variable to start shipping this platform."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::PUBLISH_WINDOWS is not set — the MSI was not uploaded."
+
+      - name: Upload the MSI and register
         if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.ships == 'true'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          # A transient 5xx from R2 used to fail a job that had already spent
+          # twenty-five minutes building. Adaptive mode backs off rather than
+          # hammering, which is what a large multipart upload wants.
+          AWS_MAX_ATTEMPTS: '5'
+          AWS_RETRY_MODE: adaptive
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
           V: ${{ needs.gate.outputs.version }}
@@ -439,13 +556,62 @@ jobs:
 
   # ── Tag and report ────────────────────────────────────────────────────────
   finalise:
-    name: Tag and report
+    name: Verify, tag and report
     needs: [gate, linux, windows]
+    # `always()` guarded on the gate, because a lane that was skipped — its
+    # platform already published — is not a reason to skip the verification.
+    # Without this, finishing a half-published version would run one lane and
+    # then quietly skip the step that checks the result.
+    if: ${{ !cancelled() && needs.gate.outputs.should_release == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write   # to push the tag
     steps:
       - uses: actions/checkout@v4
+
+      - name: Does the feed actually serve this version?
+        # The summary below is built from job outputs, which say what this run
+        # *did*. This asks the release service what a user would now be told,
+        # which is the only thing that matters and the only thing that was
+        # never checked.
+        #
+        # Compose 0.5.3 shipped an AppImage and a Flatpak with no Windows row
+        # and a green build, and stayed that way through several merges. This
+        # step is what turns that into a red one.
+        env:
+          V: ${{ needs.gate.outputs.version }}
+          PUBLISH_WINDOWS: ${{ vars.PUBLISH_WINDOWS }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl -fsS --retry 3 "$API_BASE/api/releases?app=$APP_KEY&version=$V")"
+          printf '%s' "$RESPONSE" | python3 - "$V" <<'PYEOF'
+          import json, os, sys
+
+          version = sys.argv[1]
+          items = json.load(sys.stdin)["items"]
+          have = {i["platform"] for i in items if i.get("isPrimary")}
+
+          # Windows is only expected where the repository has opted in. An app
+          # that deliberately does not ship Windows must not fail here — that is
+          # the difference between "not shipped" and "broken".
+          expected = {"linux-x86_64"}
+          if os.environ.get("PUBLISH_WINDOWS") == "true":
+              expected.add("windows-x86_64")
+
+          missing = sorted(expected - have)
+          lines = [f"| {p} | {'yes' if p in have else 'MISSING'} |" for p in sorted(expected)]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(f"### Feed check for {version}\n\n| Platform | Primary row |\n|---|---|\n")
+              f.write("\n".join(lines) + "\n\n")
+
+          if missing:
+              print(f"::error::{version} has no primary row for: {', '.join(missing)}. "
+                    "Re-run this workflow — the gate is per platform and will "
+                    "build only what is missing.")
+              sys.exit(1)
+          print(f"::notice::{version} is served on every expected platform.")
+          PYEOF
 
       - name: Tag the release
         run: |
