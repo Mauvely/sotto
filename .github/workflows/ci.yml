@@ -19,6 +19,11 @@ on:
     branches: [main]
     paths-ignore: ['docs/**', 'changes/**', '**/*.md']
   workflow_dispatch:
+    inputs:
+      installers:
+        description: 'Also upload the AppImage and MSI as artifacts'
+        type: boolean
+        default: false
 
 concurrency:
   # A force-push should not leave the previous build burning minutes.
@@ -176,16 +181,46 @@ jobs:
           choco install wixtoolset -y --no-progress
           ./scripts/package.ps1 -Format msi -BuildDir build
 
-      - name: Upload artefacts
+      # ── What leaves the runner, and what does not ───────────────────────
+      #
+      # Artifact storage is billed by the gigabyte-month and counts across
+      # every repository in the account — the same quota release.yml refuses to
+      # touch, with the same consequence when it fills: every workflow in the
+      # account fails, including the ones that publish.
+      #
+      # This step used to upload the AppImage and the MSI on every pull request
+      # and every push to main. A WebEngine AppImage is a couple of hundred
+      # megabytes, there are eight repositories on this template, and each copy
+      # was kept for a week. Nobody downloaded them: an installer on a pull
+      # request is for the rare occasion somebody wants to run the branch, and
+      # the *screenshots* are what a review actually looks at.
+      #
+      # So the screenshots always, and the installers only when asked for.
+
+      - name: Upload the screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.name }}-shots
+          path: shots/**
+          # A build that renders no screenshots is a failed build, not a
+          # warning. `warn` here is how an empty artifact went unnoticed in
+          # Compose for months.
+          if-no-files-found: error
+          # Long enough to review the run that produced them; a screenshot
+          # nobody looked at in three days is a screenshot nobody will.
+          retention-days: 3
+
+      - name: Upload the installer
+        # Run the workflow by hand with `installers` ticked when you want to
+        # put the build on a machine. The packaging steps above still run on
+        # every push, so a broken installer is still caught — it is only the
+        # upload that is on demand.
+        if: github.event_name == 'workflow_dispatch' && inputs.installers
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-${{ matrix.name }}
           path: |
             build/*.AppImage
             build/*.msi
-            shots/**
-          # A build that produces no installer is a failed build, not a warning.
-          # `warn` here is how an empty artifact went unnoticed in Compose for
-          # months.
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
