@@ -50,6 +50,28 @@
 #                       and verify but do not ship, which is where an app with
 #                       an untested port sits (Sotto). Flip one variable to
 #                       start shipping.
+# ── Where these run ─────────────────────────────────────────────────────────
+#
+# `runs-on` reads a repository variable and falls back to GitHub's runners, so
+# moving a repository onto your own machine is one variable, not a workflow
+# edit — and moving it back, when the machine is off or mid-upgrade, is the
+# same variable again.
+#
+#   RUNNER_LINUX     a label on your Linux runner,   e.g. mauvely-linux
+#   RUNNER_WINDOWS   a label on your Windows runner, e.g. mauvely-windows
+#   QT_PREFIX        a Qt already on the runner, e.g. C:/Qt/6.7.3/msvc2019_64
+#                    or /opt/Qt/6.7.3/gcc_64. Unset downloads one per run.
+#
+# Unset means GitHub-hosted, which is what every repository does until somebody
+# decides otherwise. Use a *custom* label rather than `self-hosted`: with one
+# label per platform a job cannot land on the wrong machine, and a second
+# runner can be added to a label later to get parallelism for free.
+#
+# Self-hosted runners are safe here because every repository in this suite is
+# private. On a public repository a pull request from a fork would run its own
+# code on your hardware with your secrets in scope, which is why GitHub warns
+# against exactly that.
+
 name: Release
 
 on:
@@ -89,7 +111,7 @@ jobs:
     # app-base is the template, not a product: it has no feed entry and no
     # secrets, so publishing it would fail loudly and pointlessly on every merge.
     # A fork inherits this line harmlessly — its repository is not app-base.
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     outputs:
       version: ${{ steps.check.outputs.version }}
       should_release: ${{ steps.check.outputs.should_release }}
@@ -213,7 +235,7 @@ jobs:
     name: Linux (AppImage + Flatpak)
     needs: gate
     if: needs.gate.outputs.need_linux == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     # Six hours is the default and this job takes twenty-five minutes. A hung
     # runner spending the rest of the account's budget is the failure this
     # prevents; the number is generous, not tight.
@@ -228,6 +250,18 @@ jobs:
           submodules: recursive
 
       - name: Make room on the runner
+        # ── GitHub-hosted only, and that guard is load-bearing ────────────
+        #
+        # This deletes the Android SDK, .NET, GHC and every Docker image on the
+        # machine. On a throwaway runner that is reclaiming space nobody will
+        # miss. On a runner you own it is deleting somebody's toolchains and
+        # somebody's containers, permanently, to make room on a disk that
+        # probably had room already.
+        #
+        # `runner.environment` is `github-hosted` or `self-hosted`, so the
+        # distinction is one the runner itself makes rather than something a
+        # label has to encode correctly.
+        if: runner.environment == 'github-hosted'
         # ubuntu-latest arrives with about 25 GB free and roughly 25 GB of
         # preinstalled toolchains this build will never touch. Qt with
         # QtWebEngine is ~5 GB, the build tree is several more, and
@@ -261,6 +295,10 @@ jobs:
             flatpak flatpak-builder
 
       - name: Install Qt
+        # Skipped when the runner already has one — see QT_PREFIX at the top of
+        # the file. Downloading five gigabytes of Qt onto a machine that has it
+        # installed is the single slowest pointless thing a self-hosted run does.
+        if: vars.QT_PREFIX == ''
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.*'
@@ -271,6 +309,25 @@ jobs:
           # and removes the whole class of "green on CI, broken in the artifact".
           cache: false
 
+      - name: Use the runner's own Qt
+        if: vars.QT_PREFIX != ''
+        shell: bash
+        # Mirrors what install-qt-action exports, so nothing downstream has to
+        # know which of the two ran.
+        #
+        # A Qt you installed and pinned on a machine you control is *better*
+        # provenance than a downloaded archive, which is the concern the
+        # `cache: false` below was written for — so this does not weaken it.
+        run: |
+          set -euo pipefail
+          QT='${{ vars.QT_PREFIX }}'
+          # CMake reads CMAKE_PREFIX_PATH from the environment using the *platform*
+          # list separator, so this is ':' on Linux and ';' on Windows. Getting it
+          # backwards produces one unfindable path rather than an error.
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=';'; else SEP=':'; fi
+          echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
+          echo "$QT/bin" >> "$GITHUB_PATH"
       - name: Configure
         run: >
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -386,7 +443,7 @@ jobs:
     needs: gate
     timeout-minutes: 90
     if: needs.gate.outputs.need_windows == 'true'
-    runs-on: windows-latest
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-latest' }}
     outputs:
       msi: ${{ steps.package.outputs.msi }}
       published: ${{ steps.package.outputs.published }}
@@ -396,14 +453,46 @@ jobs:
           submodules: recursive
 
       - name: Install Qt
+        # Skipped when the runner already has one — see QT_PREFIX at the top of
+        # the file. Downloading five gigabytes of Qt onto a machine that has it
+        # installed is the single slowest pointless thing a self-hosted run does.
+        if: vars.QT_PREFIX == ''
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.*'
           modules: ${{ env.QT_MODULES }}
           cache: false   # same reason as the Linux job
 
+      - name: Use the runner's own Qt
+        if: vars.QT_PREFIX != ''
+        shell: bash
+        # Mirrors what install-qt-action exports, so nothing downstream has to
+        # know which of the two ran.
+        #
+        # A Qt you installed and pinned on a machine you control is *better*
+        # provenance than a downloaded archive, which is the concern the
+        # `cache: false` below was written for — so this does not weaken it.
+        run: |
+          set -euo pipefail
+          QT='${{ vars.QT_PREFIX }}'
+          # CMake reads CMAKE_PREFIX_PATH from the environment using the *platform*
+          # list separator, so this is ':' on Linux and ';' on Windows. Getting it
+          # backwards produces one unfindable path rather than an error.
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=';'; else SEP=':'; fi
+          echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
+          echo "$QT/bin" >> "$GITHUB_PATH"
       - name: Install WiX
-        run: choco install wixtoolset -y --no-progress
+        # Skipped where it is already there, which on a persistent runner is
+        # every run after the first. `choco install` is idempotent but not
+        # quick, and on a machine you own WiX is better installed once by hand
+        # than reinstalled by every build.
+        run: |
+          if (Get-Command candle.exe -ErrorAction SilentlyContinue) {
+            Write-Host 'WiX already present.'
+          } else {
+            choco install wixtoolset -y --no-progress
+          }
 
       - name: Build and package
         id: package
@@ -563,7 +652,7 @@ jobs:
     # Without this, finishing a half-published version would run one lane and
     # then quietly skip the step that checks the result.
     if: ${{ !cancelled() && needs.gate.outputs.should_release == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: write   # to push the tag

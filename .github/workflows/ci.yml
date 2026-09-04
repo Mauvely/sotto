@@ -10,6 +10,28 @@
 # Relay's own CI is workflow_dispatch-only because Actions minutes are a real
 # budget on this account. The paths-ignore below is the compromise: a docs-only
 # or changes/-only commit does not spend a Qt build on two platforms.
+# ── Where these run ─────────────────────────────────────────────────────────
+#
+# `runs-on` reads a repository variable and falls back to GitHub's runners, so
+# moving a repository onto your own machine is one variable, not a workflow
+# edit — and moving it back, when the machine is off or mid-upgrade, is the
+# same variable again.
+#
+#   RUNNER_LINUX     a label on your Linux runner,   e.g. mauvely-linux
+#   RUNNER_WINDOWS   a label on your Windows runner, e.g. mauvely-windows
+#   QT_PREFIX        a Qt already on the runner, e.g. C:/Qt/6.7.3/msvc2019_64
+#                    or /opt/Qt/6.7.3/gcc_64. Unset downloads one per run.
+#
+# Unset means GitHub-hosted, which is what every repository does until somebody
+# decides otherwise. Use a *custom* label rather than `self-hosted`: with one
+# label per platform a job cannot land on the wrong machine, and a second
+# runner can be added to a label later to get parallelism for free.
+#
+# Self-hosted runners are safe here because every repository in this suite is
+# private. On a public repository a pull request from a fork would run its own
+# code on your hardware with your secrets in scope, which is why GitHub warns
+# against exactly that.
+
 name: CI
 
 on:
@@ -52,9 +74,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # The label, not the image name — see the note at the top of the file.
+          - os: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
             name: Linux
-          - os: windows-latest
+          - os: ${{ vars.RUNNER_WINDOWS || 'windows-latest' }}
             name: Windows
 
     runs-on: ${{ matrix.os }}
@@ -89,6 +112,10 @@ jobs:
             librsvg2-bin
 
       - name: Install Qt
+        # Skipped when the runner already has one — see QT_PREFIX at the top of
+        # the file. Downloading five gigabytes of Qt onto a machine that has it
+        # installed is the single slowest pointless thing a self-hosted run does.
+        if: vars.QT_PREFIX == ''
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.*'
@@ -99,6 +126,25 @@ jobs:
           # kept Compose's CI red for a fortnight.
           cache-key-prefix: 'qt-appbase-v1'
 
+      - name: Use the runner's own Qt
+        if: vars.QT_PREFIX != ''
+        shell: bash
+        # Mirrors what install-qt-action exports, so nothing downstream has to
+        # know which of the two ran.
+        #
+        # A Qt you installed and pinned on a machine you control is *better*
+        # provenance than a downloaded archive, which is the concern the
+        # `cache: false` below was written for — so this does not weaken it.
+        run: |
+          set -euo pipefail
+          QT='${{ vars.QT_PREFIX }}'
+          # CMake reads CMAKE_PREFIX_PATH from the environment using the *platform*
+          # list separator, so this is ':' on Linux and ';' on Windows. Getting it
+          # backwards produces one unfindable path rather than an error.
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=';'; else SEP=':'; fi
+          echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
+          echo "$QT/bin" >> "$GITHUB_PATH"
       - name: Configure
         shell: bash
         run: |
@@ -178,7 +224,9 @@ jobs:
         # here: the MSIX needs Partner Center identity that a fork of this
         # template does not have, and release.yml is where it is built.
         run: |
-          choco install wixtoolset -y --no-progress
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset -y --no-progress
+          }
           ./scripts/package.ps1 -Format msi -BuildDir build
 
       # ── What leaves the runner, and what does not ───────────────────────
