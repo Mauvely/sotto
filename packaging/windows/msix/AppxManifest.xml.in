@@ -2,8 +2,10 @@
 <!--
   MSIX manifest for the Microsoft Store build of @DISPLAY_NAME@.
 
-  Substituted by packaging/windows/build-msix.ps1, which replaces the @TOKENS@
-  below. Not a CMake configure_file: three of the values are Partner Center
+  Substituted by packaging/windows/build-msix.ps1, which replaces the
+  @-delimited placeholders below. (Spelled that way on purpose: the script
+  refuses to package a manifest still matching @[A-Z_]+@, and naming one
+  here in that shape would trip it on every run.) Not a CMake configure_file: three of the values are Partner Center
   identity, which lives in CI configuration and has nothing to do with how the
   app is compiled — putting them in CMake would make a local build ask for a
   publisher CN it has no use for.

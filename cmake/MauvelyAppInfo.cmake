@@ -77,7 +77,10 @@ function(_mauvely_write_app_info)
             string(APPEND _platforms ", ")
         endif()
         string(APPEND _platforms "\"windows-x86_64\"")
-        set(_windows_formats "\"msi\", \"msix\"")
+        # exe is the direct-download Inno Setup installer. It is built from the
+        # same CPack staging tree as the msi, so it is never a separate build —
+        # see packaging/windows/build-inno.ps1.
+        set(_windows_formats "\"msi\", \"msix\", \"exe\"")
     endif()
 
     set(_json "{
@@ -86,6 +89,8 @@ function(_mauvely_write_app_info)
   \"displayName\": \"${MAUVELY_APP_DISPLAY_NAME}\",
   \"appId\": \"${MAUVELY_APP_ID}\",
   \"version\": \"${MAUVELY_APP_VERSION}\",
+  \"upgradeGuid\": \"${MAUVELY_APP_UPGRADE_GUID}\",
+  \"windowsIcon\": \"${MAUVELY_APP_ICON_JSON}\",
   \"platforms\": [${_platforms}],
   \"formats\": {
     \"linux\": [${_linux_formats}],
@@ -195,6 +200,12 @@ macro(mauvely_app_info)
     set(MAUVELY_APP_DISPLAY_NAME "${AI_DISPLAY_NAME}")
     set(MAUVELY_APP_GENERIC_NAME "${AI_GENERIC_NAME}")
     set(MAUVELY_APP_ID           "${AI_APP_ID}")
+    # Written into app-info.json so build-inno.ps1 can give the .exe the same
+    # upgrade identity as the .msi — see the note at the top of app.iss.in.
+    set(MAUVELY_APP_UPGRADE_GUID "${AI_UPGRADE_GUID}")
+    # Backslashes would be JSON escapes; the packaging scripts read this as a
+    # path and PowerShell is happy with forward slashes on Windows.
+    string(REPLACE "\\" "/" MAUVELY_APP_ICON_JSON "${AI_ICON}")
     set(MAUVELY_APP_DESCRIPTION  "${AI_DESCRIPTION}")
     set(MAUVELY_APP_SUMMARY      "${AI_SUMMARY}")
     set(MAUVELY_APP_VERSION      "${PROJECT_VERSION}")

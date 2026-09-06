@@ -482,6 +482,16 @@ jobs:
           echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
           echo "$QT/bin" >> "$GITHUB_PATH"
+      - name: Install Inno Setup
+        shell: pwsh
+        # The direct-download .exe. Not on windows-latest, like WiX. 6.3 or
+        # newer: app.iss.in uses the `x64compatible` architecture spelling,
+        # which 6.2 does not know.
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue)) {
+            choco install innosetup -y --no-progress
+          }
+
       - name: Install WiX
         # Skipped where it is already there, which on a persistent runner is
         # every run after the first. `choco install` is idempotent but not
@@ -529,6 +539,13 @@ jobs:
           $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
           "msi=$($msi.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+          # The .exe, from the tree the .msi just staged and verified — so the
+          # two carry identical payloads and cannot drift apart. It has to run
+          # after the MSI for that reason, not merely by convention.
+          ./scripts/package.ps1 -Format exe -BuildDir build -Out dist
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          "exe=$($exe.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
           # Pass 2 — the Store package. Only when there is a listing to submit
           # to; an app without Partner Center identity stops here having still
           # proved the MSI lane works.
@@ -565,7 +582,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning::PUBLISH_WINDOWS is not set — the MSI was not uploaded."
 
-      - name: Upload the MSI and register
+      - name: Upload the MSI and the .exe, and register both
         if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.ships == 'true'
         shell: bash
         env:
@@ -582,22 +599,33 @@ jobs:
           V: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
-          FILE="$(ls dist/*.msi | head -1)"
-          NAME="$(basename "$FILE")"
-          aws s3 cp "$FILE" "s3://mauvely-releases/$APP_KEY/$V/$NAME" \
-            --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
-            --only-show-errors
-          cat > meta.json <<EOF
+          publish() { # publish <file> <format> <primary>
+            local file="$1" format="$2" primary="$3"
+            local name; name="$(basename "$file")"
+            aws s3 cp "$file" "s3://mauvely-releases/$APP_KEY/$V/$name" \
+              --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
+              --only-show-errors
+            cat > meta.json <<EOF
           {"app":"$APP_KEY","version":"$V","platform":"windows-x86_64",
-           "format":"msi","filename":"$NAME",
-           "size":$(stat -c%s "$FILE"),
-           "sha256":"$(sha256sum "$FILE" | cut -d' ' -f1)",
-           "isPrimary":true}
+           "format":"$format","filename":"$name",
+           "size":$(stat -c%s "$file"),
+           "sha256":"$(sha256sum "$file" | cut -d' ' -f1)",
+           "isPrimary":$primary}
           EOF
-          curl -fsS -X POST "$API_BASE/api/releases" \
-            -H "authorization: Bearer $RELEASES_TOKEN" \
-            -H 'content-type: application/json' \
-            --data-binary @meta.json
+            curl -fsS -X POST "$API_BASE/api/releases" \
+              -H "authorization: Bearer $RELEASES_TOKEN" \
+              -H 'content-type: application/json' \
+              --data-binary @meta.json
+            echo
+          }
+
+          # The MSI stays primary. `isPrimary` is what the feed answers with for
+          # an update, and Suite's InstallService knows how to install an .msi
+          # (msiexec /passive) and does not yet know what to do with an .exe —
+          # making the .exe primary would hand the hub an artifact it cannot
+          # apply. The .exe is for a person clicking Download.
+          publish "$(ls dist/*.msi | head -1)" msi true
+          publish "$(ls dist/*.exe | head -1)" exe false
 
       - name: Set up the Microsoft Store CLI
         if: vars.PUBLISH_WINDOWS == 'true' && steps.package.outputs.published == 'true'

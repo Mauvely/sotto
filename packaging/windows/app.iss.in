@@ -1,0 +1,92 @@
+; ─────────────────────────────────────────────────────────────────────────────
+;  Inno Setup script for @DISPLAY_NAME@.
+;
+;  Substituted by packaging/windows/build-inno.ps1, which replaces the
+;  @-delimited placeholders with values from build/app-info.json. Nothing here
+;  names an app. (Spelled that way on purpose: the script refuses to compile a
+;  script still matching @[A-Z_]+@, and naming one here in that shape would
+;  trip it on every run — which is exactly what the MSIX manifest did.)
+;
+;  ── Why a third Windows format ──────────────────────────────────────────────
+;  The MSI is the correct package and the MSIX is the Store's. Neither is what
+;  most people expect a download button to give them, and "run the .exe" is a
+;  thing people do without being told. This is that .exe.
+;
+;  ── Identity ────────────────────────────────────────────────────────────────
+;  AppId is the app's UPGRADE_GUID — the same identity the MSI uses for its own
+;  upgrade table. Sharing it is deliberate: an .exe install and an .msi install
+;  of the same app are the same product to a person, and giving them separate
+;  identities is how somebody ends up with both at once, two Start Menu entries
+;  and an updater that replaces the wrong one.
+;
+;  ── Known: this and the .msi can coexist ────────────────────────────────────
+;  Inno and Windows Installer keep separate uninstall registrations, so neither
+;  replaces the other: install both and you get two copies, two Start Menu
+;  entries, and a self-updater that replaces whichever one it was launched from.
+;
+;  There was a check here that refused to install over an existing .msi. It was
+;  removed because it could not work: it looked for the uninstall key under the
+;  UpgradeCode, and Windows Installer registers uninstall under the *ProductCode*
+;  — which CPack generates per build. It would have found nothing, every time,
+;  and read as protection that was not there. Detecting it properly means calling
+;  MsiEnumRelatedProducts through msi.dll from Pascal Script, which is worth
+;  doing and is not worth doing blind: there is no Inno Setup on the machine this
+;  was written on, so it could not be tested.
+;
+;  Until then the download page should offer one Windows format at a time.
+;
+;  ── Requires Inno Setup 6.3 or newer ────────────────────────────────────────
+;  `x64compatible` is a 6.3 spelling; 6.2 and earlier want `x64` and will fail
+;  to compile this. `choco install innosetup` gives 6.4.
+; ─────────────────────────────────────────────────────────────────────────────
+
+[Setup]
+AppId={{@UPGRADE_GUID@}
+AppName=@DISPLAY_NAME@
+AppVersion=@VERSION@
+AppVerName=@DISPLAY_NAME@ @VERSION@
+AppPublisher=@PUBLISHER@
+VersionInfoVersion=@VERSION@
+
+; Per-user, no elevation, same as the MSI. `lowest` is what keeps the UAC
+; prompt away; `DisableDirPage` follows from there, because a per-user install
+; has one correct location and offering a choice invites Program Files, which
+; this cannot write to.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+DefaultDirName={localappdata}\@DISPLAY_NAME@
+DefaultGroupName=@DISPLAY_NAME@
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+UsePreviousAppDir=yes
+
+OutputDir=@OUTPUT_DIR@
+OutputBaseFilename=@OUTPUT_BASENAME@
+SetupIconFile=@ICON@
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
+
+[Files]
+; The staged tree, whole. It is the same directory the .msi is built from and
+; the same one build-msi.ps1 verifies, so the two packages carry byte-identical
+; payloads — including the MSVC runtime, without which this installs perfectly
+; and then cannot start.
+Source: "@STAGE_DIR@\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+[Icons]
+Name: "{group}\@DISPLAY_NAME@"; Filename: "{app}\bin\@BINARY@.exe"
+Name: "{group}\Uninstall @DISPLAY_NAME@"; Filename: "{uninstallexe}"
+Name: "{userdesktop}\@DISPLAY_NAME@"; Filename: "{app}\bin\@BINARY@.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\bin\@BINARY@.exe"; Description: "Start @DISPLAY_NAME@"; \
+    Flags: nowait postinstall skipifsilent

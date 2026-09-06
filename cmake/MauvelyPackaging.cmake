@@ -128,6 +128,47 @@ endfunction()
 # The install(TARGETS ...) rule for the target must already be declared when
 # this is called, since install rules run in declaration order and windeployqt
 # needs the .exe to be there to read its imports.
+# ── The MSVC runtime ─────────────────────────────────────────────────────────
+#
+# vcruntime140.dll and msvcp140.dll have to travel inside the package. Without
+# them it installs perfectly on a clean Windows machine and the app will not
+# start, with a system dialog naming a DLL — the same failure shape as a missing
+# Qt DLL, and one nothing downstream can detect. A per-user MSI installs without
+# elevation on purpose and installing a redistributable needs elevation, so it
+# cannot bootstrap one: self-containment is the only option, and the cost is a
+# few hundred kilobytes.
+#
+# **Not `windeployqt --compiler-runtime`.** That flag needs `VCINSTALLDIR` in the
+# environment, which is set by a Visual Studio developer prompt and by nothing
+# else — not by CI, not by a plain `cmake --build`. Without it windeployqt prints
+#
+#     Warning: Cannot find Visual Studio installation directory,
+#              VCINSTALLDIR is not set.
+#
+# and exits 0, so the flag looks applied, the build goes green and the DLLs are
+# missing. Measured, not assumed.
+#
+# `InstallRequiredSystemLibraries` finds the redistributable through CMake's own
+# MSVC detection, which already knows where the compiler came from.
+function(_mauvely_stage_msvc_runtime bindir)
+    if(NOT MSVC)
+        return()
+    endif()
+    # The app targets Windows 10 and later, where the UCRT is part of the OS.
+    set(CMAKE_INSTALL_UCRT_LIBRARIES FALSE)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    include(InstallRequiredSystemLibraries)
+    if(NOT CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+        message(FATAL_ERROR
+            "The MSVC runtime DLLs were not found, so the package would install "
+            "an app that cannot start on a machine without the Visual C++ "
+            "redistributable. Install the 'C++ ATL'/redistributable component "
+            "of the Visual Studio build tools.")
+    endif()
+    install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION "${bindir}")
+    message(STATUS "MSVC runtime: staging ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}")
+endfunction()
+
 function(_mauvely_deploy_qt_runtime target)
     _mauvely_find_windeployqt(_wdq)
 
@@ -211,6 +252,12 @@ macro(mauvely_configure_packaging)
     set(_mp_multi_value)
     cmake_parse_arguments(MP "${_mp_options}" "${_mp_one_value}" "${_mp_multi_value}" ${ARGN})
 
+    if(CMAKE_INSTALL_BINDIR)
+        set(_mp_bindir "${CMAKE_INSTALL_BINDIR}")
+    else()
+        set(_mp_bindir "bin")
+    endif()
+
     if(NOT MP_TARGET)
         message(FATAL_ERROR "mauvely_configure_packaging: TARGET is required")
     endif()
@@ -232,6 +279,7 @@ macro(mauvely_configure_packaging)
         # Before anything CPack-specific: without this the installer contains
         # one executable and no Qt. See the note above the function.
         _mauvely_deploy_qt_runtime("${MP_TARGET}")
+        _mauvely_stage_msvc_runtime("${_mp_bindir}")
 
         set(CPACK_GENERATOR "WIX")
         set(CPACK_WIX_UPGRADE_GUID "${MP_UPGRADE_GUID}")

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds the per-user .msi installer for a Mauvely desktop app.
 
@@ -99,12 +99,24 @@ if ($missing.Count -gt 0) {
 }
 Write-Host ("Qt runtime staged: {0} files." -f (Get-ChildItem -Recurse -File $bin).Count)
 
-# Reported, not enforced. A per-user MSI cannot install the VC++ redistributable
-# — that needs admin — so if these are absent the app relies on the machine
-# already having it. Worth deciding on this listing rather than on a guess about
-# windeployqt's default.
+# Enforced, not reported. This listed the two files and carried on regardless
+# for a while, on the reasoning that a per-user MSI cannot install the VC++
+# redistributable itself — which is true, and is exactly why their absence is
+# fatal rather than informational. Nothing downstream can recover from it: the
+# .msi installs perfectly on a clean machine and the app will not start, with a
+# system dialog naming a DLL rather than anything a user can act on.
+#
+# windeployqt is now called with --compiler-runtime (cmake/MauvelyPackaging.cmake),
+# so these are staged. If this ever fails, that flag stopped working — do not
+# answer it by deleting this check.
 @('vcruntime140.dll', 'msvcp140.dll') | ForEach-Object {
-    Write-Host ("  MSVC runtime {0}: {1}" -f $_, (Test-Path (Join-Path $bin $_)))
+    if (-not (Test-Path (Join-Path $bin $_))) {
+        throw ("$_ is not in the staged tree. The package would install and " +
+               'then fail to start on any machine without the Visual C++ ' +
+               'redistributable. windeployqt --compiler-runtime should have ' +
+               'put it there.')
+    }
+    Write-Host "  MSVC runtime $_ : present"
 }
 
 # ── 3. name it the way the release feed indexes it ──────────────────────────

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds the Microsoft Store package (.msix) for a Mauvely desktop app.
 
@@ -100,7 +100,16 @@ if (-not (Test-Path $exe)) {
 # step catches. The base set is what every Qt Widgets app needs; the rest is
 # derived from what this app actually links, so an app that gains WebEngine gets
 # the stricter check without anyone editing this list.
-$required = @('Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll', 'platforms\qwindows.dll')
+#
+# The two MSVC runtime DLLs are in this list rather than reported beside it.
+# An MSIX has a second way to get them — a Microsoft.VCLibs.140.00 framework
+# dependency in the manifest — and this package deliberately does not use it:
+# windeployqt is called with --compiler-runtime, so the DLLs travel inside the
+# package and it depends on nothing the Store has to resolve. Either mechanism
+# works; having neither is what a clean machine notices, and until now the
+# manifest declared no dependencies and nothing checked for the files.
+$required = @('Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll', 'platforms\qwindows.dll',
+              'vcruntime140.dll', 'msvcp140.dll')
 $hasWebEngine = Test-Path (Join-Path $bin 'Qt6WebEngineCore.dll')
 if ($hasWebEngine) {
     $required += @('Qt6WebEngineWidgets.dll', 'QtWebEngineProcess.exe')

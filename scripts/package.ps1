@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
     The one entry point for producing Windows artifacts.
 
 .DESCRIPTION
-    scripts/package.ps1 [-Format msi|msix|all] [-BuildDir DIR] [-Out DIR]
+    scripts/package.ps1 [-Format msi|msix|exe|all] [-BuildDir DIR] [-Out DIR]
 
     Every Mauvely app has this script at this path with these flags, so "how do
     I build a package for X" has one answer across the whole suite. It refuses
@@ -22,7 +22,13 @@
     configured and says which it found.
 
 .PARAMETER Format
-    msi, msix or all. Default: all.
+    msi, msix, exe or all. Default: all.
+
+    `exe` is the direct-download Inno Setup installer. It is not a separate
+    build: it packages the same CPack staging tree the .msi is built from, so
+    the two carry identical payloads. That means `-Format exe` on its own only
+    works in a build directory where the .msi has already been packaged —
+    `all` does them in the right order.
 
 .PARAMETER BuildDir
     The configured CMake build directory. Default: build.
@@ -41,7 +47,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('msi', 'msix', 'all')][string]$Format = 'all',
+    [ValidateSet('msi', 'msix', 'exe', 'all')][string]$Format = 'all',
     [string]$BuildDir = 'build',
     [string]$Out,
     [string]$IdentityName        = $env:MSSTORE_IDENTITY_NAME,
@@ -119,6 +125,15 @@ if (Test-Wanted 'msix') {
         -Publisher $Publisher `
         -PublisherDisplayName $PublisherDisplayName
     $built += (Join-Path $BuildDir "$binary-$version-windows-x86_64.msix")
+}
+
+if (Test-Wanted 'exe') {
+    # After the MSI, always: build-inno.ps1 packages the tree CPack stages and
+    # build-msi.ps1 verifies. Running it first would find no staging directory
+    # and say so.
+    Write-Host '==> EXE (Inno Setup)'
+    & (Join-Path $repoRoot 'packaging\windowsuild-inno.ps1') -BuildDir $BuildDir
+    $built += (Join-Path $BuildDir "$binary-$version-windows-x86_64.exe")
 }
 
 if ($built.Count -eq 0) {
