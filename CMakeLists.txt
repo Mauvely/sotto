@@ -115,6 +115,18 @@ FetchContent_Declare(whisper
     GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
     GIT_TAG        v1.9.1
     GIT_SHALLOW    TRUE
+    # Windows caps a path at 260 characters unless something opts out, and
+    # whisper.cpp's own tree is what runs into it: paths like
+    # `examples/whisper.android.java/app/src/androidTest/java/com/litongjava/…`
+    # are long before the build directory is prepended. The checkout then fails
+    # with "Filename too long" and the configure dies at `FetchContent`.
+    #
+    # Per-clone rather than a note in the README telling somebody to run
+    # `git config --system core.longpaths true`, which needs an administrator
+    # and changes their machine. GitHub's runners check out at `D:\a\sotto\sotto`
+    # and are short enough to have got away with it, which is exactly why this
+    # was found on a developer's machine and not in CI.
+    GIT_CONFIG     core.longpaths=true
 )
 FetchContent_MakeAvailable(whisper)
 

@@ -1,0 +1,118 @@
+# CLAUDE.md
+
+Guidance for working in this repository. `README.md` is what a user reads and
+`docs/ARCHITECTURE.md` is how the pieces fit; this file is what saves
+re-discovering the same things every session.
+
+## What this is
+
+**Sotto** — a **Qt6/C++17 + QML** desktop app for fully local voice dictation.
+A global shortcut opens a pill on the active monitor, whisper.cpp transcribes
+on this machine, and the formatted text is injected into whatever has focus.
+Version lives in `CMakeLists.txt` (`project(... VERSION x.y.z)`) and compiles in
+as `SOTTO_VERSION`.
+
+**No account, no network, no telemetry.** The only request Sotto ever makes is
+downloading a speech model when somebody asks it to. That is the product, not a
+feature of it — anything that adds a call home is a different application.
+
+## Where it differs from every other app in the suite
+
+Sotto was written outside the shared foundation and has only partly been brought
+into it. Assumptions that hold in Compose, Snap, Relay, Mail, Play and Suite do
+**not** hold here:
+
+| | |
+|---|---|
+| **QML, not widgets** | The UI is `qml/` driven from `src/ui/`. There is no `FramelessWindow`, no `TitleBar`, no `ui::widgets.h`. The suite's window-chrome work — including the Windows native-frame takeover — does not apply and was correctly skipped. |
+| **No `brand.h`, no `branding.{h,cpp}`** | The shared colour table and the organisation-branding port are absent, and so is `branding_interop`. Colour lives in QML. Bringing them in is a real change, not a copy: nothing here reads a `Theme`. |
+| **No `core_smoke`** | Two focused test binaries instead — `test_formatter` and `test_speechgate`, both registered with CTest. |
+| **`cmake/MauvelyAppInfo.cmake` is current** | It is the one shared file this repo does carry, and it is in step with app-base's. |
+| **No accounts** | No `AccountService`, no `suitelink`, no entry in `KNOWN_CLIENTS`. `device-mint.test.ts` in website-main explicitly asserts `assertCanMint('suite', 'sotto')` throws. Sotto gets an account when it has something to authenticate *for*. |
+
+## Build / run / test
+
+```bash
+cmake -S . -B build -DSOTTO_GPU=cpu     # Qt 6.4+; whisper.cpp is fetched here
+cmake --build build -j8
+./build/bin/MauvelySotto
+ctest --test-dir build
+```
+
+`SOTTO_GPU` is `cpu | hip | cuda | vulkan`. The GPU backends need toolchains a
+hosted runner does not have, and **an artifact built against one will not start
+without it** — so anything shipped is `cpu`.
+
+### Windows, verified 2026-09-06
+
+It builds, and both tests pass, against Qt 6.7.3 msvc2019_64 with
+`-DSOTTO_GPU=cpu`. Three things worth knowing before trying:
+
+- **`FetchContent` of whisper.cpp needs `core.longpaths`.** whisper.cpp carries
+  paths like `examples/whisper.android.java/app/src/androidTest/java/com/…`
+  which pass 260 characters once a build directory is prepended, and the
+  checkout fails with "Filename too long". `GIT_CONFIG core.longpaths=true` is
+  on the `FetchContent_Declare` for exactly this. It is per-clone on purpose:
+  the alternative is telling somebody to run `git config --system` as an
+  administrator. GitHub's runners check out at `D:\a\sotto\sotto` and are short
+  enough to have never hit it, which is why this surfaced on a developer's
+  machine rather than in CI.
+- **`--version` and `--help` print nothing through a pipe.** The target is
+  `WIN32_EXECUTABLE`, so it has no stdout; `attachParentConsole()` attaches to
+  the calling console and writes there. Correct for a person typing in a
+  terminal, invisible to `cmd | grep`. Not a bug.
+- **The MSI is per-user** (`%LOCALAPPDATA%`, no UAC) and the MSVC runtime is
+  staged into the package by `MauvelyPackaging.cmake`. Both are shared
+  behaviour; see `app-base`.
+
+Still untested on real Windows hardware: the global hotkey (`src/hotkey/WinHotkey.cpp`),
+text injection, and the overlay's behaviour on a multi-monitor setup. Those are
+the three things the platform split below exists for, and none of them can be
+checked from a build.
+
+## The platform split, and the trap in it
+
+`CMakeLists.txt` gates platform sources as:
+
+```cmake
+if(WIN32)
+    …WinHotkey…
+else()
+    …DBusService, PortalRemoteDesktop, PortalRequest, GlobalShortcutsPortal…
+endif()
+```
+
+**That `else()` is Linux, spelled as "not Windows".** On macOS it compiles the
+D-Bus and XDG-portal branch, which is not merely wrong but incoherent — see
+`docs/MACOS.md` in app-base, which names this repo as the hard blocker of the
+suite's macOS work. Fixing it means a genuine third branch plus new code: a
+Carbon or `CGEventTap` hotkey backend and an Accessibility-API text injector.
+Guards will not do it.
+
+## Rules & gotchas
+
+- **The only network call is a model download.** Adding a second one changes
+  what this product is. If something genuinely needs one, it is a conversation
+  before it is a commit.
+- **The overlay must never take focus.** On Wayland it is a `wlr-layer-shell`
+  surface for that reason; a focusable overlay steals the keyboard from the app
+  the text is about to be injected into, which breaks the one thing Sotto does.
+- **`LayerShellQt` and `KF6WindowSystem` are optional and auto-disabled.** The
+  build must succeed without either — the overlay falls back to a plain
+  always-on-top window and the translucency switch just lowers the opacity.
+- **whisper.cpp is pinned** to a tag in `FetchContent_Declare`. Moving it is a
+  deliberate change with a model-compatibility question attached, not a version
+  bump.
+- **`SOTTO_STORE_BUILD=ON` compiles the self-updater out.** An MSIX cannot
+  replace its own package, so a check whose only possible outcome is "ignore the
+  answer" should not be sent.
+
+## Commit Guidelines
+
+When completing a commit:
+1. Write a clear, concise commit message describing the change (no conventional
+   commits prefixes needed).
+2. Create a markdown file at `changes/<short-commit-hash>.md` containing
+   **Changes**, **Additions**, **Bug Fixes** and **Removals**.
+3. Include the commit hash in the changes file for reference. This lands as a
+   follow-up commit, because a file named after a commit cannot be inside it.
