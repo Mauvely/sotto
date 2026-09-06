@@ -513,6 +513,11 @@ jobs:
           MSSTORE_PUBLISHER_DISPLAY: ${{ vars.MSSTORE_PUBLISHER_DISPLAY }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # Native commands as well as cmdlets. Without this a cmake that fails
+          # prints its error, returns non-zero, and the step carries on to build
+          # whatever the last good configure left behind — which is exactly how
+          # the splat below went unnoticed through every Windows release.
+          $PSNativeCommandUseErrorActionPreference = $true
 
           # Does this app ship for Windows at all? The answer lives in
           # app-info.json, beside the app, rather than in this workflow.
@@ -529,7 +534,13 @@ jobs:
 
           # Pass 1 — the direct-download installer. The store-build option is
           # OFF, so this build keeps its self-updater.
-          $flags = $env:CONFIGURE_FLAGS -split '\s+' | Where-Object { $_ }
+          # @(...) is load-bearing. A pipeline yielding **one** element returns
+          # that element rather than an array, and splatting a bare string passes
+          # it one character at a time — so a single-flag CONFIGURE_FLAGS reached
+          # cmake as `- D C E _ R E Q ...`, which it answered with "Unknown
+          # argument -" and carried on. Compose, Play, Relay and Sotto have
+          # exactly one flag; the repos with two or more only worked by accident.
+          $flags = @($env:CONFIGURE_FLAGS -split '\s+' | Where-Object { $_ })
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release @flags `
                 "-D$($env:STORE_BUILD_OPTION)=OFF" 
           cmake --build build --config Release --parallel $env:NUMBER_OF_PROCESSORS
@@ -679,7 +690,12 @@ jobs:
     # platform already published — is not a reason to skip the verification.
     # Without this, finishing a half-published version would run one lane and
     # then quietly skip the step that checks the result.
-    if: ${{ !cancelled() && needs.gate.outputs.should_release == 'true' }}
+    #
+    # `gate.result` as well as its output: a gate that *failed* has still set
+    # its outputs by the time this is evaluated, so a repository missing a
+    # release secret produced two failures — the real one, and this job
+    # failing to verify a version nothing had built.
+    if: ${{ !cancelled() && needs.gate.result == 'success' && needs.gate.outputs.should_release == 'true' }}
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
@@ -702,11 +718,16 @@ jobs:
         run: |
           set -euo pipefail
           RESPONSE="$(curl -fsS --retry 3 "$API_BASE/api/releases?app=$APP_KEY&version=$V")"
-          printf '%s' "$RESPONSE" | python3 - "$V" <<'PYEOF'
+          # Through the environment rather than a pipe. The heredoc below *is*
+          # stdin — it is where python reads its script from — so the piped
+          # response reached nothing and `json.load(sys.stdin)` saw an exhausted
+          # stream. This step has failed with "Expecting value: line 1 column 1"
+          # on every release since it was written, published or not.
+          RESPONSE="$RESPONSE" python3 - "$V" <<'PYEOF'
           import json, os, sys
 
           version = sys.argv[1]
-          items = json.load(sys.stdin)["items"]
+          items = json.loads(os.environ["RESPONSE"])["items"]
           have = {i["platform"] for i in items if i.get("isPrimary")}
 
           # Windows is only expected where the repository has opted in. An app

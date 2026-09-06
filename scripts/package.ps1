@@ -132,7 +132,7 @@ if (Test-Wanted 'exe') {
     # build-msi.ps1 verifies. Running it first would find no staging directory
     # and say so.
     Write-Host '==> EXE (Inno Setup)'
-    & (Join-Path $repoRoot 'packaging\windowsuild-inno.ps1') -BuildDir $BuildDir
+    & (Join-Path $repoRoot 'packaging\windows\build-inno.ps1') -BuildDir $BuildDir
     $built += (Join-Path $BuildDir "$binary-$version-windows-x86_64.exe")
 }
 
