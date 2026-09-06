@@ -138,6 +138,18 @@ macro(mauvely_app_info)
         set(AI_PLATFORMS linux windows)
     endif()
     foreach(_p IN LISTS AI_PLATFORMS)
+        if(_p STREQUAL "macos")
+            # Named on purpose, so the answer is here rather than guessed at.
+            # Six of the eight apps already set MACOSX_BUNDLE and carry correct
+            # Q_OS_MACOS branches, so several will configure and build far enough
+            # to look finished — and none of it has ever been compiled. What is
+            # missing is not a flag: no Info.plist, no dmg or pkg generator, no
+            # signing or notarisation, no runner, and Sotto has no macOS backend
+            # for its hotkey or its text injection at all.
+            message(FATAL_ERROR
+                "mauvely_app_info: PLATFORMS macos is not supported yet. "
+                "docs/MACOS.md says what each app would need, and in what order.")
+        endif()
         if(NOT _p STREQUAL "linux" AND NOT _p STREQUAL "windows")
             message(FATAL_ERROR "mauvely_app_info: unknown PLATFORMS value '${_p}' "
                                 "(expected linux and/or windows)")
