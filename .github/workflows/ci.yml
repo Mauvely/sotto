@@ -247,25 +247,13 @@ jobs:
       #
       # So the screenshots always, and the installers only when asked for.
 
-      - name: Check the screenshots were rendered
-        shell: bash
-        # Deliberately separate from the upload below, and deliberately not
-        # dependent on it. A build that renders no screenshots is a failed
-        # build, not a warning — `if-no-files-found: warn` is how an empty
-        # artifact went unnoticed in Compose for months — and that has to stay
-        # true on a runner with no R2 credentials.
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          found=(shots/*.png)
-          if [ ${#found[@]} -eq 0 ]; then
-            echo "::error::no screenshots were rendered"
-            exit 1
-          fi
-          for f in "${found[@]}"; do
-            [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
-          done
-          echo "${#found[@]} screenshot(s) rendered"
+      # There is no "check the screenshots were rendered" step here, and that is
+      # not an omission. Sotto has no offscreen screenshot harness: its only
+      # always-present window is a 440x64 HUD that stays hidden unless dictation
+      # is running, so there is no chrome to grab and `shots/` is always empty.
+      # The step was inherited from app-base anyway and failed every build on
+      # both legs, for a screenshot nothing was ever going to take. The
+      # smoke-run above is this app's equivalent guarantee.
 
       - name: Send the artefacts to R2
         shell: bash
