@@ -246,6 +246,125 @@ endif()
     install(CODE "${_code}")
 endfunction()
 
+# ---------------------------------------------------------------------------
+# And put it in the BUILD TREE too, which is a different problem.
+# ---------------------------------------------------------------------------
+# Everything above fixes the installer. It does nothing for the executable a
+# developer just built, and `install(TARGETS)` copies one file for the same
+# reason: Qt's DLLs are not targets. So `build/bin/Release/<app>.exe` sits alone
+# in its directory and Windows answers a double-click with
+#
+#     The code execution cannot proceed because Qt6Widgets.dll was not found.
+#
+# — a modal dialog rather than a non-zero exit, so it interrupts whoever is at
+# the keyboard instead of appearing in any log. It is worse for the tests, which
+# land in the same directory: `ctest` starts each one, each one fails to load,
+# and a run produces one dialog per test. That happened to a person, twice.
+#
+# The comment above the install rule says running windeployqt over the build
+# tree "does NOT fix this", and that is true of the thing it is about — CPack
+# never reads the build tree. Both are needed, for different failures.
+#
+# POST_BUILD rather than a separate target: it runs only when the executable is
+# actually relinked, and it is the only arrangement where the answer to "why
+# will it not start" is never "you forgot a step". The flags match the install
+# rule's exactly, so what a developer runs is what ships.
+#
+# The test executables share `bin/<config>/`, so they are covered by the app's
+# run. Building *only* a test target leaves them uncovered, and putting the
+# command on each one would mean a windeployqt per test for a directory they all
+# share — `cmake --build` builds the app, which is the ordinary case.
+function(_mauvely_deploy_qt_beside_binaries target)
+    _mauvely_find_windeployqt(_wdq)
+    if(NOT _wdq)
+        # The install path raises a FATAL_ERROR for this a moment later, with
+        # the reason. Saying it twice would only bury it.
+        return()
+    endif()
+
+    file(GLOB_RECURSE _qml_files "${CMAKE_CURRENT_SOURCE_DIR}/*.qml")
+    set(_qmldir_flag "")
+    if(_qml_files)
+        # See the install rule: without this a Qt Quick app gets its DLLs and
+        # none of its QML, and dies on "module ... is not installed".
+        set(_qmldir_flag "--qmldir" "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND "${_wdq}"
+                "$<IF:$<CONFIG:Debug>,--debug,--release>"
+                ${_qmldir_flag}
+                "$<TARGET_FILE:${target}>"
+        COMMENT "Staging the Qt runtime beside ${target}.exe so it can be run"
+        VERBATIM)
+
+    # windeployqt stages `platforms/qwindows.dll` and no other platform
+    # integration, which is right for an app somebody double-clicks and wrong
+    # for the way this suite renders its screenshots: every repo's CLAUDE.md
+    # documents `QT_QPA_PLATFORM=offscreen`, and without the plugin beside the
+    # binary that only works where Qt's own plugin directory is already
+    # reachable. `_wdq` is `<qt>/bin/windeployqt.exe`, so the plugin is two
+    # directories along from the tool we are already using.
+    get_filename_component(_wdq_bin "${_wdq}" DIRECTORY)
+    get_filename_component(_qt_prefix "${_wdq_bin}" DIRECTORY)
+    set(_offscreen "${_qt_prefix}/plugins/platforms/qoffscreen.dll")
+    if(EXISTS "${_offscreen}")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${_offscreen}" "$<TARGET_FILE_DIR:${target}>/platforms/"
+            COMMENT "Staging the offscreen platform plugin for the harness"
+            VERBATIM)
+    endif()
+
+    # windeployqt knows about Qt and nothing else. See the note on
+    # MAUVELY_EXTRA_RUNTIME_DLLS below.
+    foreach(_dll IN LISTS MAUVELY_EXTRA_RUNTIME_DLLS)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${_dll}" "$<TARGET_FILE_DIR:${target}>"
+            COMMENT "Staging ${_dll} beside ${target}.exe"
+            VERBATIM)
+    endforeach()
+endfunction()
+
+# ---------------------------------------------------------------------------
+# Third-party DLLs, which nothing else knows about.
+# ---------------------------------------------------------------------------
+# `MAUVELY_EXTRA_RUNTIME_DLLS` is a list of absolute paths a repository appends
+# to before calling `mauvely_configure_packaging()`. Both the build tree and the
+# installer get them.
+#
+# It exists because windeployqt deploys Qt, `InstallRequiredSystemLibraries`
+# deploys the MSVC runtime, and between them they cover everything the suite
+# needed until Cloud was enabled on Windows. `OpenSSL::Crypto` is linked
+# dynamically — deliberately, so there is one OpenSSL in the process and it is
+# Qt's — which puts a hard `libcrypto-*-x64.dll` import in the executable that
+# neither tool has any reason to know about.
+#
+# Measured on Suite the day Cloud was first built here: `dumpbin /dependents`
+# listed `libcrypto-4-x64.dll`, nothing staged it, and the app started only
+# because OpenSSL's own `bin` happened to be on PATH. The .msi would have
+# installed cleanly on any machine and died before main() — the exact failure
+# every comment in this file is about, arriving through the one door none of
+# them was watching.
+#
+# A repository adds to it beside the dependency that caused it, not here.
+function(_mauvely_install_extra_runtime_dlls bindir)
+    if(NOT MAUVELY_EXTRA_RUNTIME_DLLS)
+        return()
+    endif()
+    foreach(_dll IN LISTS MAUVELY_EXTRA_RUNTIME_DLLS)
+        if(NOT EXISTS "${_dll}")
+            message(FATAL_ERROR
+                "MAUVELY_EXTRA_RUNTIME_DLLS names ${_dll}, which does not "
+                "exist. Failing here rather than shipping a package that "
+                "installs cleanly and cannot start.")
+        endif()
+    endforeach()
+    install(PROGRAMS ${MAUVELY_EXTRA_RUNTIME_DLLS} DESTINATION "${bindir}")
+    message(STATUS "Extra runtime: staging ${MAUVELY_EXTRA_RUNTIME_DLLS}")
+endfunction()
+
 macro(mauvely_configure_packaging)
     set(_mp_options PER_USER)
     set(_mp_one_value TARGET DISPLAY_NAME DESCRIPTION VERSION UPGRADE_GUID ICON)
@@ -280,6 +399,11 @@ macro(mauvely_configure_packaging)
         # one executable and no Qt. See the note above the function.
         _mauvely_deploy_qt_runtime("${MP_TARGET}")
         _mauvely_stage_msvc_runtime("${_mp_bindir}")
+        _mauvely_install_extra_runtime_dlls("${_mp_bindir}")
+        # The installer is not the only thing that has to start. See the note
+        # above the function: the build tree is a separate failure, and it is
+        # the one a developer meets.
+        _mauvely_deploy_qt_beside_binaries("${MP_TARGET}")
 
         set(CPACK_GENERATOR "WIX")
         set(CPACK_WIX_UPGRADE_GUID "${MP_UPGRADE_GUID}")
