@@ -43,7 +43,7 @@ on:
   workflow_dispatch:
     inputs:
       installers:
-        description: 'Also upload the AppImage and MSI as artifacts'
+        description: 'Also send the AppImage and MSI to R2'
         type: boolean
         default: false
 
@@ -229,46 +229,100 @@ jobs:
           }
           ./scripts/package.ps1 -Format msi -BuildDir build
 
-      # ── What leaves the runner, and what does not ───────────────────────
+      # ── What leaves the runner, and where it goes ───────────────────────
       #
-      # Artifact storage is billed by the gigabyte-month and counts across
-      # every repository in the account — the same quota release.yml refuses to
-      # touch, with the same consequence when it fills: every workflow in the
-      # account fails, including the ones that publish.
+      # To R2, never to GitHub. Artifact storage is billed by the
+      # gigabyte-month and counts across every repository in the account, and a
+      # full quota fails every workflow in the account — including the ones
+      # that publish. release.yml has refused to touch it from the start; this
+      # file did not, and it is what filled the quota: a WebEngine AppImage is
+      # a couple of hundred megabytes, there are eight repositories on this
+      # template, and each copy was kept for a week.
       #
-      # This step used to upload the AppImage and the MSI on every pull request
-      # and every push to main. A WebEngine AppImage is a couple of hundred
-      # megabytes, there are eight repositories on this template, and each copy
-      # was kept for a week. Nobody downloaded them: an installer on a pull
-      # request is for the rare occasion somebody wants to run the branch, and
-      # the *screenshots* are what a review actually looks at.
+      # Removing the uploads cost nothing, because nothing consumed them. There
+      # is no `download-artifact` anywhere in this suite — no job hands a file
+      # to another job — so both uploads were storage for a human to click, and
+      # a `dev/` prefix in `mauvely-releases` with a lifecycle rule serves that
+      # just as well without a quota anybody else shares.
       #
       # So the screenshots always, and the installers only when asked for.
 
-      - name: Upload the screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.event.repository.name }}-${{ matrix.name }}-shots
-          path: shots/**
-          # A build that renders no screenshots is a failed build, not a
-          # warning. `warn` here is how an empty artifact went unnoticed in
-          # Compose for months.
-          if-no-files-found: error
-          # Long enough to review the run that produced them; a screenshot
-          # nobody looked at in three days is a screenshot nobody will.
-          retention-days: 3
+      - name: Check the screenshots were rendered
+        shell: bash
+        # Deliberately separate from the upload below, and deliberately not
+        # dependent on it. A build that renders no screenshots is a failed
+        # build, not a warning — `if-no-files-found: warn` is how an empty
+        # artifact went unnoticed in Compose for months — and that has to stay
+        # true on a runner with no R2 credentials.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=(shots/*.png)
+          if [ ${#found[@]} -eq 0 ]; then
+            echo "::error::no screenshots were rendered"
+            exit 1
+          fi
+          for f in "${found[@]}"; do
+            [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
+          done
+          echo "${#found[@]} screenshot(s) rendered"
 
-      - name: Upload the installer
-        # Run the workflow by hand with `installers` ticked when you want to
-        # put the build on a machine. The packaging steps above still run on
-        # every push, so a broken installer is still caught — it is only the
-        # upload that is on demand.
-        if: github.event_name == 'workflow_dispatch' && inputs.installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.event.repository.name }}-${{ matrix.name }}
-          path: |
-            build/*.AppImage
-            build/*.msi
-          if-no-files-found: error
-          retention-days: 3
+      - name: Send the artefacts to R2
+        shell: bash
+        # **Nothing leaves this runner into GitHub artifact storage.**
+        #
+        # The quota is account-wide and a full one fails every workflow in the
+        # account, including the ones that publish. A full AppImage and MSI on
+        # every push across eight repositories, kept for a week, is what filled
+        # it once already. release.yml has always shipped straight to R2; these
+        # two steps were the last thing that did not — and nothing consumed
+        # them. There is no `download-artifact` anywhere in this suite, so they
+        # were pure storage for a human to click.
+        #
+        # Screenshots always, because they are what a review actually looks at.
+        # Installers only on a manual run with `installers` ticked, which is the
+        # rule the artifact upload already carried. Both land under `dev/`,
+        # which has an R2 lifecycle rule expiring it — so there is no retention
+        # setting here to drift out of step with the one that matters.
+        #
+        # The app names itself out of build/app-info.json, like every other step
+        # in this file.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          WANT_INSTALLERS: ${{ github.event_name == 'workflow_dispatch' && inputs.installers }}
+          RUN_ID: ${{ github.run_id }}
+          LEG: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCOUNT_ID:-}" ]; then
+            echo "::notice::R2 is not configured on this repository — nothing was uploaded."
+            exit 0
+          fi
+
+          APP_KEY="$(python3 -c 'import json;print(json.load(open("build/app-info.json"))["key"])')"
+          PREFIX="dev/$APP_KEY/$RUN_ID/$LEG"
+          ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+
+          send() { # send <file> <subdir>
+            local f="$1" sub="$2" name
+            name="$(basename "$f")"
+            aws s3 cp "$f" "s3://mauvely-releases/$PREFIX/$sub/$name" \
+              --endpoint-url "$ENDPOINT" --only-show-errors
+            printf -- '- `%s/%s/%s`\n' "$PREFIX" "$sub" "$name" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          shopt -s nullglob
+          printf '### Artefacts in R2 (`mauvely-releases`)\n' >> "$GITHUB_STEP_SUMMARY"
+          for f in shots/*.png; do send "$f" shots; done
+
+          if [ "${WANT_INSTALLERS:-false}" = "true" ]; then
+            installers=(build/*.AppImage build/*.msi)
+            if [ ${#installers[@]} -eq 0 ]; then
+              echo "::error::installers were asked for and none were built"
+              exit 1
+            fi
+            for f in "${installers[@]}"; do send "$f" installers; done
+          fi
