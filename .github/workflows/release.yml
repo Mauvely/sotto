@@ -77,6 +77,12 @@ name: Release
 on:
   push:
     branches: [main]
+    # The version this releases lives in CMakeLists.txt, so a commit that
+    # touches only prose cannot start one — and the changes-note convention
+    # means every real commit is followed by exactly such a commit. ci.yml has
+    # ignored these three since it was written; this file never did, and paid a
+    # gate job per note in every repository.
+    paths-ignore: ['docs/**', 'changes/**', '**/*.md']
   workflow_dispatch:
     inputs:
       republish:
@@ -120,7 +126,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Is this repository set up to publish at all?
+      #
+      # Not the same question as "is the configuration complete", which is
+      # asked further down and is an error. A repository with *none* of the
+      # four credentials has never been set up to release — play, relay, snap,
+      # sotto and suite are all in that state — and since none of them has ever
+      # published a version, the gate below says "release" on every single push
+      # and the job failed every single time. A repository that cannot publish
+      # anything is not a broken build; it is a repository nobody has given
+      # credentials to yet, and it should say so once in the summary rather
+      # than by email on every merge.
+      #
+      # Some-but-not-all is still an error: that is a mistake rather than a
+      # state, and it is what the completeness check below exists to catch.
+      - id: configured
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          MAUVELY_RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+        run: |
+          set -euo pipefail
+          present=0
+          for name in R2_ACCOUNT_ID R2_ACCESS_KEY_ID \
+                      R2_SECRET_ACCESS_KEY MAUVELY_RELEASES_TOKEN; do
+            [[ -n "${!name:-}" ]] && present=$((present + 1))
+          done
+
+          if (( present == 0 )); then
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release credentials in this repository, so" \
+                 "there is nothing this workflow can publish. Add" \
+                 "R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY" \
+                 "and MAUVELY_RELEASES_TOKEN under Settings ->" \
+                 "Secrets and variables -> Actions."
+            {
+              echo "### Not set up to release"
+              echo
+              echo "This repository has none of the four release credentials, so"
+              echo "the build stops here rather than failing. Add them under"
+              echo "**Settings -> Secrets and variables -> Actions**:"
+              echo
+              echo "| Secret |"
+              echo "|---|"
+              echo "| \`R2_ACCOUNT_ID\` |"
+              echo "| \`R2_ACCESS_KEY_ID\` |"
+              echo "| \`R2_SECRET_ACCESS_KEY\` |"
+              echo "| \`MAUVELY_RELEASES_TOKEN\` |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - id: check
+        if: steps.configured.outputs.publishable == 'true'
         env:
           # `workflow_dispatch` with republish=true asks the platforms to be
           # built and uploaded again even where a row exists. For the case where
