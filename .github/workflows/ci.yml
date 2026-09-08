@@ -117,8 +117,14 @@ jobs:
             libxcb-render-util0 \
             libxcb-xinerama0 \
             libcups2-dev \
-            libfuse2 \
             librsvg2-bin
+          # libfuse2 became libfuse2t64 in the 64-bit time_t transition.
+          # Debian 13 and Ubuntu 24.04 carry only the new name; older
+          # releases only the old, and ubuntu-latest has been both. Asking
+          # for one name and failing is how this step broke on the Debian
+          # runner, with an "Unable to locate package" naming a library
+          # nothing else in the log mentions.
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Install Qt
         # Skipped when the runner already has one — see QT_PREFIX at the top of

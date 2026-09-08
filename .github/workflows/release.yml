@@ -355,8 +355,11 @@ jobs:
             libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
-            libcups2-dev libfuse2 librsvg2-bin \
+            libcups2-dev librsvg2-bin \
             flatpak flatpak-builder
+          # libfuse2 became libfuse2t64 in the 64-bit time_t transition — see
+          # ci.yml. One name does not serve every release this runs on.
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Install Qt
         # Skipped when the runner already has one — see QT_PREFIX at the top of
