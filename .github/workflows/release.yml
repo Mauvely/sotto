@@ -354,10 +354,15 @@ jobs:
           # the same moment and there is one dpkg lock between them. Pushing all eight
           # repos together did exactly that, and the losers died with
           #     E: Could not get lock /var/lib/dpkg/lock-frontend
-          # DPkg::Lock::Timeout is apt's own answer: wait for the lock rather than
-          # fail on it. Inert on a hosted runner, where nothing else is running.
-          sudo apt-get -o DPkg::Lock::Timeout=600 update
-          sudo apt-get -o DPkg::Lock::Timeout=600 install -y \
+          # DPkg::Lock::Timeout makes apt wait for the *dpkg* lock, which is what
+          # `install` contends on. It does nothing for `apt-get update`, which
+          # rebuilds the package cache — two of those at once still corrupted it:
+          #     E: The package cache file is corrupted
+          # So every apt invocation goes through a lock file of our own as well.
+          # Both are wanted: flock serialises us against ourselves, the option waits
+          # for anything else on the box that holds dpkg.
+          sudo flock -w 900 /var/lock/mauvely-apt.lock apt-get -o DPkg::Lock::Timeout=600 update
+          sudo flock -w 900 /var/lock/mauvely-apt.lock apt-get -o DPkg::Lock::Timeout=600 install -y \
             libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
@@ -365,8 +370,8 @@ jobs:
             flatpak flatpak-builder
           # libfuse2 became libfuse2t64 in the 64-bit time_t transition — see
           # ci.yml. One name does not serve every release this runs on.
-          sudo apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2t64 \
-            || sudo apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2
+          sudo flock -w 900 /var/lock/mauvely-apt.lock apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2t64 \
+            || sudo flock -w 900 /var/lock/mauvely-apt.lock apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2
 
       - name: Install Qt
         # Skipped when the runner already has one — see QT_PREFIX at the top of
