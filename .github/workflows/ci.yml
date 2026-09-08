@@ -104,8 +104,14 @@ jobs:
         # QtWebEngineWidgets depends on — a CUPS problem presents as a missing
         # WebEngine, which cost Compose a week of CI archaeology.
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          # Seven runner services share this machine, so seven jobs can reach apt at
+          # the same moment and there is one dpkg lock between them. Pushing all eight
+          # repos together did exactly that, and the losers died with
+          #     E: Could not get lock /var/lib/dpkg/lock-frontend
+          # DPkg::Lock::Timeout is apt's own answer: wait for the lock rather than
+          # fail on it. Inert on a hosted runner, where nothing else is running.
+          sudo apt-get -o DPkg::Lock::Timeout=600 update
+          sudo apt-get -o DPkg::Lock::Timeout=600 install -y \
             libgl1-mesa-dev \
             libxkbcommon-dev \
             libxkbcommon-x11-0 \
@@ -124,7 +130,8 @@ jobs:
           # for one name and failing is how this step broke on the Debian
           # runner, with an "Unable to locate package" naming a library
           # nothing else in the log mentions.
-          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
+          sudo apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2t64 \
+            || sudo apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2
 
       - name: Install Qt
         # Skipped when the runner already has one — see QT_PREFIX at the top of
