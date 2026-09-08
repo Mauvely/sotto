@@ -388,6 +388,15 @@ jobs:
           echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
           echo "$QT/bin" >> "$GITHUB_PATH"
+          # The runtime half, and it is not optional on Linux. install-qt-action
+          # exports these too, and without them linuxdeploy walks the binary,
+          # fails to resolve libQt6Widgets.so.6 and stops — which is what the
+          # first real self-hosted run did. Windows finds its DLLs through PATH,
+          # which is already set above.
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            echo "LD_LIBRARY_PATH=$QT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+            echo "QT_PLUGIN_PATH=$QT/plugins" >> "$GITHUB_ENV"
+          fi
       - name: Configure
         run: >
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -542,6 +551,15 @@ jobs:
           echo "QT_ROOT_DIR=$QT" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT${CMAKE_PREFIX_PATH:+$SEP$CMAKE_PREFIX_PATH}" >> "$GITHUB_ENV"
           echo "$QT/bin" >> "$GITHUB_PATH"
+          # The runtime half, and it is not optional on Linux. install-qt-action
+          # exports these too, and without them linuxdeploy walks the binary,
+          # fails to resolve libQt6Widgets.so.6 and stops — which is what the
+          # first real self-hosted run did. Windows finds its DLLs through PATH,
+          # which is already set above.
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            echo "LD_LIBRARY_PATH=$QT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+            echo "QT_PLUGIN_PATH=$QT/plugins" >> "$GITHUB_ENV"
+          fi
       - name: Install Inno Setup
         shell: pwsh
         # The direct-download .exe. Not on windows-latest, like WiX. 6.3 or
