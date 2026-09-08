@@ -19,7 +19,11 @@
 #
 #   RUNNER_LINUX     a label on your Linux runner,   e.g. mauvely-linux
 #   RUNNER_WINDOWS   a label on your Windows runner, e.g. mauvely-windows
-#   QT_PREFIX        a Qt already on the runner, e.g. C:/Qt/6.7.3/msvc2019_64
+#   QT_PREFIX_LINUX    a Qt on the Linux runner,   e.g. /opt/Qt/6.7.3/gcc_64
+#   QT_PREFIX_WINDOWS  a Qt on the Windows runner, e.g. C:/Qt/6.7.3/msvc2019_64
+#   QT_PREFIX          the fallback for either, from when only one platform was
+#                      self-hosted. One value cannot be both paths, so the two
+#                      above are what a machine with both runners needs.
 #                    or /opt/Qt/6.7.3/gcc_64. Unset downloads one per run.
 #
 # Unset means GitHub-hosted, which is what every repository does until somebody
@@ -77,8 +81,13 @@ jobs:
           # The label, not the image name — see the note at the top of the file.
           - os: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
             name: Linux
+            # Per platform, because one variable cannot be both. QT_PREFIX is
+            # kept as the fallback so a repo that only ever had one platform
+            # self-hosted keeps working with nothing to unset.
+            qt: ${{ vars.QT_PREFIX_LINUX || vars.QT_PREFIX }}
           - os: ${{ vars.RUNNER_WINDOWS || 'windows-latest' }}
             name: Windows
+            qt: ${{ vars.QT_PREFIX_WINDOWS || vars.QT_PREFIX }}
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.name }})
@@ -115,7 +124,7 @@ jobs:
         # Skipped when the runner already has one — see QT_PREFIX at the top of
         # the file. Downloading five gigabytes of Qt onto a machine that has it
         # installed is the single slowest pointless thing a self-hosted run does.
-        if: vars.QT_PREFIX == ''
+        if: matrix.qt == ''
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.*'
@@ -127,7 +136,7 @@ jobs:
           cache-key-prefix: 'qt-appbase-v1'
 
       - name: Use the runner's own Qt
-        if: vars.QT_PREFIX != ''
+        if: matrix.qt != ''
         shell: bash
         # Mirrors what install-qt-action exports, so nothing downstream has to
         # know which of the two ran.
@@ -137,7 +146,7 @@ jobs:
         # `cache: false` below was written for — so this does not weaken it.
         run: |
           set -euo pipefail
-          QT='${{ vars.QT_PREFIX }}'
+          QT='${{ matrix.qt }}'
           # CMake reads CMAKE_PREFIX_PATH from the environment using the *platform*
           # list separator, so this is ':' on Linux and ';' on Windows. Getting it
           # backwards produces one unfindable path rather than an error.
