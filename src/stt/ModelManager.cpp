@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -47,7 +48,14 @@ ModelManager::ModelManager(QObject *parent)
 
 QString ModelManager::modelsDir()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+    // AppLocalDataLocation, not AppDataLocation. Identical on Linux; on Windows
+    // AppDataLocation is the *roaming* profile, which is the wrong home for
+    // multi-gigabyte model blobs (a domain login would try to sync them) and,
+    // worse, is not where apppaths::migrateOrganisation() looks — that builds
+    // its paths from GenericDataLocation, which is %LOCALAPPDATA%. Models
+    // downloaded under the old organisation name were therefore left behind on
+    // Windows and the app reported them uninstalled.
+    return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
         + QStringLiteral("/models");
 }
 

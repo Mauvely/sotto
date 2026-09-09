@@ -172,7 +172,11 @@ qt_add_executable(MauvelySotto
 # unresolved (undefined) at runtime instead of failing the build. Must be set
 # *before* qt_add_qml_module, which reads source file properties as it
 # processes QML_FILES.
-set_source_files_properties(qml/Brand.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+#
+# Theme.qml is the second singleton: Brand is the raw ramps, Theme is the
+# semantic layer resolved for whichever theme is on.
+set_source_files_properties(qml/Brand.qml qml/Theme.qml
+                            PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(MauvelySotto
     URI Sotto
@@ -180,15 +184,23 @@ qt_add_qml_module(MauvelySotto
     RESOURCE_PREFIX /qt/qml # Qt 6.5+ default; pinned so 6.4 builds match
     QML_FILES
         qml/Brand.qml
+        qml/Theme.qml
         qml/Overlay.qml
         qml/SettingsWindow.qml
         qml/NotepadWindow.qml
         qml/LogoMark.qml
         qml/VisualizerBars.qml
         qml/LocalBadge.qml
+        qml/SPanel.qml
         qml/SSection.qml
         qml/SLabel.qml
         qml/SButton.qml
+        qml/SRadio.qml
+        qml/SCheckBox.qml
+        qml/SSwitch.qml
+        qml/SComboBox.qml
+        qml/STextField.qml
+        qml/SSlider.qml
 )
 
 target_include_directories(MauvelySotto PRIVATE src)

@@ -25,7 +25,7 @@ into it. Assumptions that hold in Compose, Snap, Relay, Mail, Play and Suite do
 | | |
 |---|---|
 | **QML, not widgets** | The UI is `qml/` driven from `src/ui/`. There is no `FramelessWindow`, no `TitleBar`, no `ui::widgets.h`. The suite's window-chrome work — including the Windows native-frame takeover — does not apply and was correctly skipped. |
-| **No `brand.h`, no `branding.{h,cpp}`** | The shared colour table and the organisation-branding port are absent, and so is `branding_interop`. Colour lives in QML. Bringing them in is a real change, not a copy: nothing here reads a `Theme`. |
+| **No `brand.h`, no `branding.{h,cpp}`** | The shared colour table and the organisation-branding port are absent, and so is `branding_interop`. Colour lives in QML: `qml/Brand.qml` is the raw ramps and `qml/Theme.qml` is the semantic layer, the two of them mirroring the siblings' `src/core/{brand,theme}.h` by hand. Nothing checks that they agree. |
 | **No `core_smoke`** | Two focused test binaries instead — `test_formatter` and `test_speechgate`, both registered with CTest. |
 | **`cmake/MauvelyAppInfo.cmake` is current** | It is the one shared file this repo does carry, and it is in step with app-base's. |
 | **No accounts** | No `AccountService`, no `suitelink`, no entry in `KNOWN_CLIENTS`. `device-mint.test.ts` in website-main explicitly asserts `assertCanMint('suite', 'sotto')` throws. Sotto gets an account when it has something to authenticate *for*. |
@@ -43,7 +43,7 @@ ctest --test-dir build
 hosted runner does not have, and **an artifact built against one will not start
 without it** — so anything shipped is `cpu`.
 
-### Windows, verified 2026-09-06
+### Windows, verified 2026-09-06 and again 2026-09-09
 
 It builds, and both tests pass, against Qt 6.7.3 msvc2019_64 with
 `-DSOTTO_GPU=cpu`. Three things worth knowing before trying:
@@ -65,10 +65,51 @@ It builds, and both tests pass, against Qt 6.7.3 msvc2019_64 with
   staged into the package by `MauvelyPackaging.cmake`. Both are shared
   behaviour; see `app-base`.
 
-Still untested on real Windows hardware: the global hotkey (`src/hotkey/WinHotkey.cpp`),
-text injection, and the overlay's behaviour on a multi-monitor setup. Those are
-the three things the platform split below exists for, and none of them can be
-checked from a build.
+Verified again 2026-09-09 against **Qt 6.9.0 msvc2022_64**, generator
+`Visual Studio 17 2022`, `-DSOTTO_GPU=cpu`. Both tests pass; LayerShellQt and
+KF6WindowSystem are absent, which is the "optional pieces missing" case the
+build promises to survive.
+
+**The global hotkey does bind now** — `RegisterHotKey` was asked on this machine
+and answered. The default used to be `LOGO+ALT+d` on every platform and Windows
+*refuses* that one (the shell owns Win+Alt+D for the clock flyout,
+`ERROR_HOTKEY_ALREADY_REGISTERED`), so the Windows default is `CTRL+ALT+d`. If
+you change it, check the answer rather than assuming: Snap's
+`src/platform/hotkeys_win.cpp` has the same warning for the same reason.
+
+Still untested on real Windows hardware: text injection (no focused app to type
+into from a render), hold-to-talk key-release polling, and the overlay's
+behaviour on a multi-monitor setup.
+
+### Verifying UI changes
+
+There is no display in CI, so the chrome is rendered and looked at:
+
+```bash
+QT_QPA_PLATFORM=offscreen SOTTO_SHOT=/tmp/x.png SOTTO_VIEW=settings \
+  ./build/bin/Release/MauvelySotto
+```
+
+| Variable | Effect |
+|---|---|
+| `SOTTO_SHOT=<path>` | grab the window after 900 ms, then quit |
+| `SOTTO_VIEW=settings\|notepad\|overlay` | which window (default `settings`) |
+| `SOTTO_THEME=dark\|light\|system` | force a theme **for this run only** — never written to disk |
+| `SOTTO_SIZE=<w>x<h>` | resize before grabbing; the settings page is ~1750px tall and its window is 760 |
+
+`overlay` drives the HUD into `listening` with sample levels and a line of
+partial text, because an idle pill is a transparent rectangle. The harness skips
+`SingleInstance` on purpose — forwarding "ShowSettings" to a running copy and
+exiting would leave you waiting for a file nobody writes — and it quits through
+`App::quit()`, without which the windows outlive the QML engine and the run ends
+in a page of `TypeError: Cannot read property 'state' of null`.
+
+**Never name a QML property `on` + a capital.** `Theme.onPrimary` is what the
+sibling apps' C++ calls the ink on a filled brand surface; in QML that name
+collides with the signal-handler syntax, the initialiser is never installed as a
+binding, and every reader gets an invalid QColor — which paints **black**. It
+shipped as black button labels in both themes and looked deliberate. The
+property is `primaryInk`.
 
 ## The platform split, and the trap in it
 
@@ -106,6 +147,17 @@ Guards will not do it.
 - **`SOTTO_STORE_BUILD=ON` compiles the self-updater out.** An MSIX cannot
   replace its own package, so a check whose only possible outcome is "ignore the
   answer" should not be sent.
+- **Settings live in a default-constructed `QSettings`.** `main.cpp` calls
+  `QSettings::setDefaultFormat(IniFormat)` before anything else, so the file is
+  `Mauvely/Sotto.{conf,ini}` — the same pair `apppaths::migrateOrganisation()`
+  writes to. Passing an explicit organisation to `QSettings` again would put the
+  migration back to copying a file the app then ignores, which is what it did
+  from the rename until 2026-09-09.
+- **`ModelManager::modelsDir()` is `AppLocalDataLocation`.** Identical to
+  `AppDataLocation` on Linux; on Windows that one is the *roaming* profile, and
+  `apppaths` builds its paths from `GenericDataLocation`, which is not. Gigabytes
+  of model blobs belong in neither a roaming profile nor a directory the
+  migration cannot see.
 
 ## Handing off
 

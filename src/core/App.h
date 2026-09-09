@@ -58,6 +58,14 @@ public:
 
     void initialize();
 
+    // ── Screenshot harness (SOTTO_SHOT; see main.cpp) ────────────────────
+    // Hands back one of the three windows, ready to grab. `overlay` also
+    // drives the HUD into `listening` with sample levels and a line of
+    // partial text, because the pill draws nothing at all while idle and
+    // the visualiser has no bars until audio has been captured — a render
+    // of the untouched HUD is a transparent 440×64 rectangle.
+    QQuickWindow *harnessWindow(const QString &view);
+
     QString stateName() const;
     QString partialText() const { return m_partialText; }
     QVariantList levels() const;

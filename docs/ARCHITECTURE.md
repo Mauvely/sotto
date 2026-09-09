@@ -49,6 +49,9 @@ flowchart LR
 | Portal plumbing | `src/portal/PortalRequest.*` | The Request/Response dance shared by hotkey + remote desktop. |
 | Overlay | `src/ui/OverlayController.*`, `qml/Overlay.qml` | See below. |
 | Tray | `src/ui/TrayIcon.*` | SNI via QSystemTrayIcon. |
+| Design tokens | `qml/Brand.qml`, `qml/Theme.qml` | Both singletons. `Brand` is the raw ramps and never changes; `Theme` is the semantic layer — grounds, panels, text tiers, motion — resolved from `Config.darkMode`. Every colour and duration in the QML goes through `Theme`, so the light/dark toggle is one binding. |
+| Chrome | `qml/SPanel.qml`, `qml/SSection.qml` | A content region on the window ground: 16px radius, no border, 16px gutters. Panels are separated by the ground showing through, which is why they have no outline. |
+| Controls | `qml/S{Button,Radio,CheckBox,Switch,ComboBox,TextField,Slider,Label}.qml` | Brand skins over `QtQuick.Controls.Basic`. The Basic style's own indicators are flat greys that belong to neither theme; that is the only reason these exist. |
 
 ## Threading model
 
@@ -86,10 +89,19 @@ since hiding destroys the wl surface. `App.blurAvailable` tells the UI
 whether that path was compiled in; Hyprland users get the same effect with
 `layerrule = blur, sotto-hud`.
 
-The HUD follows the Mauvely brand: a slate-950 pill, the logo mark (white
-arcs, teal signal dot), 22 teal level bars, live transcript line (elided from
-the left so the newest words stay visible), and a teal-tinted `LOCAL` badge.
-All `Behavior`/animations are gated on `Config.animationsEnabled`.
+The HUD follows the Mauvely brand: a pill in the theme's tinted chrome colour
+(`Theme.chromePanel` — `#1b1a33` dark, `#f5f3ff` light), the logo mark (arcs in
+the theme's text ink, teal signal dot), 22 teal level bars, a live transcript
+line (elided from the left so the newest words stay visible), and a teal-tinted
+`LOCAL` badge.
+
+Every duration in the app goes through `Theme.durFast` / `durBase` / `durSlow`,
+which return **0** when `Config.animationsEnabled` is off — a QML animation given
+a zero duration hands its end value straight over, so "off" is the same code
+arriving at once rather than a second path nobody exercises. The HUD's entrance
+is a fade plus a 3% scale at `durSlow`; it deliberately omits the design system's
+4px rise, because the window *is* the pill and `OverlayController` derives the
+KWin blur region from the window's geometry.
 
 ## Latency budget (defaults)
 

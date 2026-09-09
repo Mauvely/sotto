@@ -74,8 +74,12 @@ public:
 
 #ifdef Q_OS_WIN
 
-// Ctrl+V through SendInput.
-void sendPasteKeystroke()
+// Ctrl+V through SendInput. Returns false when Windows refused the input,
+// which it does whenever the focused window belongs to a more privileged
+// process (UIPI) — a Task Manager or an elevated editor. The answer was
+// discarded before, so the app reported a successful paste into a window that
+// never received one and the text was only on the clipboard.
+bool sendPasteKeystroke()
 {
     INPUT in[4] = {};
     for (auto &i : in)
@@ -86,7 +90,7 @@ void sendPasteKeystroke()
     in[2].ki.dwFlags = KEYEVENTF_KEYUP;
     in[3].ki.wVk = VK_CONTROL;
     in[3].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(4, in, sizeof(INPUT));
+    return SendInput(4, in, sizeof(INPUT)) == 4;
 }
 
 // Types the text as KEYEVENTF_UNICODE events — layout-independent, and
@@ -185,9 +189,18 @@ public:
                     emit finished(true, QString());
                 else
                     emit finished(false,
+#ifdef Q_OS_WIN
+                                  // Naming the Linux tooling on Windows was
+                                  // advice nobody could act on.
+                                  tr("Windows blocked the Ctrl+V keystroke — the window in front "
+                                     "is probably running as administrator. The text is on the "
+                                     "clipboard; paste it manually.")
+#else
                                   tr("Could not synthesize Ctrl+V — the text is on the clipboard; "
                                      "paste it manually. Set up ydotool or allow the RemoteDesktop "
-                                     "portal for automatic pasting."));
+                                     "portal for automatic pasting.")
+#endif
+                    );
             });
         });
     }
@@ -196,8 +209,7 @@ private:
     void sendPaste(std::function<void(bool)> done)
     {
 #ifdef Q_OS_WIN
-        sendPasteKeystroke();
-        done(true);
+        done(sendPasteKeystroke());
 #else
         if (ydotoolReady()) {
             auto *p = new QProcess(this);

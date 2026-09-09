@@ -19,6 +19,9 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QtMath>
+
+#include <cmath>
 
 #ifndef Q_OS_WIN
 #include "inject/PortalRemoteDesktop.h"
@@ -302,6 +305,28 @@ void App::showNotepad()
         w->raise();
         w->requestActivate();
     }
+}
+
+QQuickWindow *App::harnessWindow(const QString &view)
+{
+    if (view == QLatin1String("notepad")) {
+        setNotepadText(tr("Sotto types what you say into whatever has focus, or into "
+                          "this scratch buffer when you would rather keep it.\n\n"
+                          "Nothing here has been anywhere near a network."));
+        return ensureWindow(m_notepadWindow, QStringLiteral("NotepadWindow.qml"));
+    }
+    if (view == QLatin1String("overlay")) {
+        m_partialText = tr("the quick brown fox jumps over the lazy dog");
+        emit partialTextChanged();
+        // A plausible waveform rather than a flat line, so the bar shape and
+        // the elision of the text beside it are both visible.
+        for (int i = 0; i < m_levels.size(); ++i)
+            m_levels[i] = 0.12f + 0.80f * float(qFabs(std::sin(i * 0.8)));
+        emit levelsChanged();
+        setState(State::Listening); // the HUD shows itself when state leaves idle
+        return m_overlay ? m_overlay->window() : nullptr;
+    }
+    return ensureWindow(m_settingsWindow, QStringLiteral("SettingsWindow.qml"));
 }
 
 void App::quit()

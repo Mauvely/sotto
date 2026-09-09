@@ -4,7 +4,11 @@ import Sotto
 
 // Brand button: filled primary by default, with secondary/ghost/soft variants
 // for the settings window's action hierarchy (Download vs. Cancel/Remove/
-// Refresh). Adapted for the dark (slate 950) ground the app windows sit on.
+// Refresh).
+//
+// Hover goes one step darker on the filled surface and one step tinted on a
+// quiet one — never opacity-only, which the design system rules out — and takes
+// `durFast`, so it stops moving the moment Animations is off.
 Button {
     id: control
 
@@ -28,20 +32,28 @@ Button {
     background: Rectangle {
         radius: control._radius
         border.width: control.variant === "secondary" ? 1 : 0
-        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.color: control.hovered ? Theme.textMuted : Theme.borderStrong
         color: {
             switch (control.variant) {
-            case "secondary": return control.pressed ? Qt.rgba(1, 1, 1, 0.10)
-                                                       : (control.hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
-            case "ghost":     return control.pressed ? Qt.rgba(1, 1, 1, 0.12)
-                                                       : (control.hovered ? Qt.rgba(1, 1, 1, 0.07) : "transparent")
-            case "soft":      return control.pressed ? Qt.rgba(Brand.violet500.r, Brand.violet500.g, Brand.violet500.b, 0.32)
-                                                       : (control.hovered ? Qt.rgba(Brand.violet500.r, Brand.violet500.g, Brand.violet500.b, 0.24)
-                                                                           : Qt.rgba(Brand.violet500.r, Brand.violet500.g, Brand.violet500.b, 0.16))
-            default:          return control.pressed ? Brand.violet700 : (control.hovered ? Brand.primaryHover : Brand.primary)
+            case "secondary":
+            case "ghost":
+                return control.pressed ? Theme.primarySoftHover
+                                       : (control.hovered ? Theme.primarySoft : "transparent")
+            case "soft":
+                return control.pressed ? Theme.primarySoftHover
+                                       : (control.hovered ? Theme.primarySoftHover : Theme.primarySoft)
+            default:
+                return control.pressed ? Theme.primaryActive
+                                       : (control.hovered ? Theme.primaryHover : Theme.primary)
             }
         }
-        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on color {
+            ColorAnimation { duration: Theme.durFast; easing.type: Easing.Bezier
+                             easing.bezierCurve: Theme.easeOut }
+        }
+        Behavior on border.color {
+            ColorAnimation { duration: Theme.durFast }
+        }
     }
 
     contentItem: Text {
@@ -49,6 +61,6 @@ Button {
         font: control.font
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
-        color: control.variant === "primary" ? "#ffffff" : Brand.violet300
+        color: control.variant === "primary" ? Theme.primaryInk : Theme.primaryText
     }
 }

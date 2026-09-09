@@ -35,14 +35,18 @@ Item {
             Rectangle {
                 width: bars.barWidth
                 radius: bars.barWidth / 2
-                color: Brand.signal
+                color: Theme.signal
                 height: 4 + (bars.levels[bars.firstIndex + index] || 0) * (bars.height - 6)
                 y: (bars.height - height) / 2
                 opacity: bars.dimmed ? 0.25
                                      : 0.45 + 0.55 * (bars.levels[bars.firstIndex + index] || 0)
 
+                // Deliberately shorter than `durInstant`: this one tracks live
+                // audio, and a token duration here would smear the level rather
+                // than smooth it. `enabled` is what the Animations setting
+                // switches, as it always did.
                 Behavior on height {
-                    enabled: bars.animated
+                    enabled: bars.animated && Theme.animate
                     SmoothedAnimation { duration: 90 }
                 }
             }

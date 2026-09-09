@@ -2,15 +2,16 @@ import QtQuick
 import Sotto
 
 // The Sotto mark: a dot emitting two sound arcs. The dot carries the brand's
-// teal signal accent (the wordmark's reversed-variant treatment: slate
-// ground, teal dot); the arcs stay a soft white so the mark reads at a
-// glance against the dark pill.
+// teal signal accent (the wordmark's reversed-variant treatment: slate ground,
+// teal dot); the arcs are drawn in the theme's text ink so the mark reads on a
+// light panel as well as on the dark one it was designed against.
 // The dot breathes gently while listening (unless animations are off).
 Item {
     id: mark
     property bool speaking: false
     property bool animated: true
     property real size: 26
+    property color arcColor: Theme.text
 
     width: size
     height: size
@@ -20,7 +21,7 @@ Item {
         width: mark.size * 0.30
         height: width
         radius: width / 2
-        color: Brand.signal
+        color: Theme.signal
         x: mark.size * 0.06
         y: (mark.height - height) / 2
 
@@ -34,11 +35,17 @@ Item {
     }
 
     Canvas {
+        id: arcs
         anchors.fill: parent
+        // A Canvas paints once and keeps the pixels. `arcColor` is a binding on
+        // the theme, so without this the arcs stay whatever ink was current when
+        // the window was first built and vanish on the other theme's panel.
+        onArcColorChanged: requestPaint()
+        property color arcColor: mark.arcColor
         onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
-            ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.85)
+            ctx.strokeStyle = Qt.rgba(arcColor.r, arcColor.g, arcColor.b, 0.85)
             ctx.lineWidth = mark.size * 0.085
             ctx.lineCap = "round"
             var cx = mark.size * 0.21

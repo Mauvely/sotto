@@ -20,7 +20,8 @@ Wayland) first, with an experimental Windows port.
 - 📥 Text is inserted into the focused app (clipboard+paste or ydotool), or
   copied to the clipboard, or dictated into a built-in notepad window
 - ⚙️ Settings UI: model download manager, shortcut, microphone, output method,
-  animations toggle, translucency (compositor blur), monitor selection
+  theme (dark, light, or match the desktop), animations toggle, translucency
+  (compositor blur), monitor selection
 - 🖥️ Designed for **KDE Plasma (KWin) on Wayland** first; the overlay uses
   wlr-layer-shell so it is never focusable and never tiled — Hyprland & friends
   are on the roadmap
@@ -123,7 +124,7 @@ same models, same local-only promise:
 | Piece | Windows backend |
 |---|---|
 | Audio capture | WASAPI (via Qt Multimedia — unchanged code) |
-| Global shortcut | `RegisterHotKey` (hold-to-talk supported) |
+| Global shortcut | `RegisterHotKey` (hold-to-talk supported). Default **Ctrl+Alt+D**, not Meta+Alt+D: the Windows shell owns Win+Alt+D (the clock flyout) and refuses to hand it over |
 | Text insertion | clipboard + Ctrl+V, or typed key-by-key (`SendInput`) |
 | Overlay | frameless always-on-top window (the fallback path) |
 | Single instance / CLI | local socket instead of D-Bus |
@@ -174,6 +175,13 @@ sudo systemctl enable --now ydotool   # or run `ydotoold` as your user service
 
 Terminals usually paste with **Ctrl+Shift+V** — use "Clipboard only" or ydotool
 typing there.
+
+### Theme
+
+*Settings → Appearance → Theme* is **Match the desktop**, **Dark** or **Light**.
+The window ground is violet-tinted and every settings section is a rounded panel
+floating on it, which is what the rest of the Mauvely apps look like since
+2026-09-09. The dictation pill follows the same theme.
 
 ### Translucency & compositor blur
 

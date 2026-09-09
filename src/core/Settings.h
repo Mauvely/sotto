@@ -3,10 +3,19 @@
 #include <QObject>
 #include <QSettings>
 
-// Persistent user configuration, backed by an INI file at
-// ~/.config/sotto/sotto.conf and exposed to QML as the "Config"
-// context property. Every value is read/written through QSettings on
-// access so external edits are picked up on restart.
+// Persistent user configuration, backed by an INI file under the suite's
+// organisation — `~/.config/Mauvely/Sotto.conf`, `%APPDATA%/Mauvely/Sotto.ini` —
+// and exposed to QML as the "Config" context property. Every value is
+// read/written through QSettings on access so external edits are picked up on
+// restart.
+//
+// The default-constructed QSettings is deliberate: it resolves through
+// QCoreApplication's organisation and application names, which is what
+// `apppaths::migrateOrganisation()` writes to. This class used to hardcode
+// ("sotto", "sotto") — the pre-rename pair — so the migration ran on every
+// launch, copied the file to the new location, and then the app read the old
+// one anyway. main.cpp sets IniFormat as the default format before either
+// happens, so both halves land on the same file.
 class Settings : public QObject
 {
     Q_OBJECT
@@ -33,6 +42,8 @@ class Settings : public QObject
     Q_PROPERTY(bool voiceCmdDeleteLastSentence READ voiceCmdDeleteLastSentence WRITE setVoiceCmdDeleteLastSentence NOTIFY voiceCmdDeleteLastSentenceChanged)
 
     // Appearance
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged) // "system" | "dark" | "light"
+    Q_PROPERTY(bool darkMode READ darkMode NOTIFY themeChanged)             // theme, resolved
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY animationsEnabledChanged)
     Q_PROPERTY(bool overlayTranslucent READ overlayTranslucent WRITE setOverlayTranslucent NOTIFY overlayTranslucentChanged)
     Q_PROPERTY(QString overlayScreen READ overlayScreen WRITE setOverlayScreen NOTIFY overlayScreenChanged) // "auto" or a QScreen name
@@ -76,6 +87,15 @@ public:
     bool voiceCmdDeleteLastSentence() const;
     void setVoiceCmdDeleteLastSentence(bool v);
 
+    QString theme() const;
+    void setTheme(const QString &v);
+    bool darkMode() const;
+
+    // Force a theme for this process only, never written to disk. The
+    // screenshot harness (SOTTO_THEME) is the only caller: rendering the
+    // light chrome must not change what the person who ran it sees next.
+    void setThemeOverride(const QString &v);
+
     bool animationsEnabled() const;
     void setAnimationsEnabled(bool v);
     bool overlayTranslucent() const;
@@ -118,6 +138,7 @@ signals:
     void voiceCmdNewParagraphChanged();
     void voiceCmdDeleteLastLineChanged();
     void voiceCmdDeleteLastSentenceChanged();
+    void themeChanged();
     void animationsEnabledChanged();
     void overlayTranslucentChanged();
     void overlayScreenChanged();
@@ -127,4 +148,5 @@ signals:
 private:
     QString autostartFilePath() const;
     mutable QSettings m_s;
+    QString m_themeOverride;
 };

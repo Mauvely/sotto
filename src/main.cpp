@@ -8,6 +8,9 @@
 #include <QFontDatabase>
 #include <QIcon>
 #include <QQuickStyle>
+#include <QQuickWindow>
+#include <QSettings>
+#include <QTimer>
 
 #include <cstdio>
 #include <cstring>
@@ -91,6 +94,16 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName(QStringLiteral(APP_DISPLAY_NAME));
     QCoreApplication::setApplicationVersion(QStringLiteral(SOTTO_VERSION));
 
+    // Sotto keeps its configuration in an INI file on every platform, including
+    // Windows, where QSettings would otherwise use the registry. Set as the
+    // *default* format rather than passed to each constructor, because
+    // apppaths::migrateOrganisation() below builds both its source and its
+    // destination with the constructors that take no format — so this one call
+    // is what makes the migration move the file the app actually reads. It used
+    // to shuttle registry keys nobody had written while Settings read
+    // sotto/sotto.conf regardless.
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+
     // Before anything constructs a QSettings or reaches for AppDataLocation.
     // Sotto used organisation "sotto", application "sotto" — its own naming,
     // not the suite's — so both halves changed. The data directory is the half
@@ -115,9 +128,68 @@ int main(int argc, char *argv[])
 
     const QStringList args = app.arguments().mid(1);
 
-    // Single instance: if the lock is taken, forward the action and exit.
     Settings settings;
     App sotto(&settings);
+
+    // ── Screenshot harness ───────────────────────────────────────────────
+    // Renders one window headless and exits, so the chrome can be looked at
+    // without a display. The suite's other apps spell this CE_SHOT/SNAP_SHOT;
+    // this is the QML equivalent.
+    //
+    //   QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+    //   SOTTO_SHOT=/tmp/x.png SOTTO_VIEW=settings SOTTO_THEME=light \
+    //     ./MauvelySotto
+    //
+    //   SOTTO_SHOT=<path>                     grab, then quit
+    //   SOTTO_VIEW=settings|notepad|overlay   which window (default settings)
+    //   SOTTO_THEME=dark|light|system         force a theme for this run only
+    //   SOTTO_SIZE=<w>x<h>                    resize before grabbing — the
+    //                                         settings page is several times
+    //                                         taller than its window, and a
+    //                                         640×760 grab shows two panels
+    //
+    // It deliberately skips SingleInstance: a render is not a session, and
+    // forwarding "ShowSettings" to a running copy and exiting would leave the
+    // harness waiting for a file that is never written.
+    const QString shot = qEnvironmentVariable("SOTTO_SHOT");
+    if (!shot.isEmpty()) {
+        const QString forcedTheme = qEnvironmentVariable("SOTTO_THEME");
+        if (!forcedTheme.isEmpty())
+            settings.setThemeOverride(forcedTheme);
+
+        sotto.initialize();
+        QQuickWindow *w = sotto.harnessWindow(qEnvironmentVariable("SOTTO_VIEW"));
+        if (!w) {
+            std::fputs("[shot] no window for SOTTO_VIEW\n", stderr);
+            return 1;
+        }
+        const QString size = qEnvironmentVariable("SOTTO_SIZE");
+        if (size.contains(u'x')) {
+            const int sw = size.section(u'x', 0, 0).toInt();
+            const int sh = size.section(u'x', 1, 1).toInt();
+            if (sw > 0 && sh > 0)
+                w->resize(sw, sh);
+        }
+
+        w->show();
+        // Long enough for the first frame, the fonts and any Component.onCompleted
+        // that sets a combo box's index. Nothing here is asynchronous the way
+        // Snap's library scan is, so one delay covers every view.
+        QTimer::singleShot(900, &app, [&sotto, w, shot] {
+            if (w->grabWindow().save(shot))
+                std::fprintf(stderr, "[shot] wrote %s\n", qUtf8Printable(shot));
+            else
+                std::fprintf(stderr, "[shot] failed to write %s\n", qUtf8Printable(shot));
+            // App::quit(), not QCoreApplication::quit(): the windows have to go
+            // before the QML engine does, or every binding on the App/Config
+            // context properties re-evaluates against a null and the run ends in
+            // a page of "TypeError: Cannot read property 'state' of null".
+            sotto.quit();
+        });
+        return app.exec();
+    }
+
+    // Single instance: if the lock is taken, forward the action and exit.
     SingleInstance instance(&sotto);
     if (!instance.registerPrimary()) {
         QString method = QStringLiteral("ShowSettings");

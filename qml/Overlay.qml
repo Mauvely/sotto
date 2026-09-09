@@ -2,8 +2,13 @@ import QtQuick
 import QtQuick.Window
 import Sotto
 
-// The dictation HUD: a black pill floating at the bottom of the active
-// screen. Window/layer-shell setup happens in OverlayController.
+// The dictation HUD: a pill floating at the bottom of the active screen.
+// Window/layer-shell setup happens in OverlayController.
+//
+// The pill is `chromePanel` — the tinted chrome step, not the neutral content
+// one. It is the only chrome Sotto has, and the 2026-09-09 decision is that
+// chrome is tinted; a content panel here would read as a piece of some other
+// app's window floating over the desktop.
 Window {
     id: root
     width: 440
@@ -31,7 +36,8 @@ Window {
 
     Timer {
         id: hideTimer
-        interval: 200
+        // Outlast the exit animation, whatever the setting made its duration.
+        interval: Theme.durSlow + 20
         onTriggered: root.visible = false
     }
 
@@ -42,20 +48,29 @@ Window {
         // Translucent mode leaves enough alpha for compositor blur (KWin
         // blur-behind, Hyprland `layerrule = blur, sotto-hud`, Mica once
         // Windows support lands) to show through.
-        color: Qt.rgba(Brand.slate950.r, Brand.slate950.g, Brand.slate950.b,
-                       Config.overlayTranslucent ? 0.55 : 0.93)
+        color: Qt.rgba(Theme.chromePanel.r, Theme.chromePanel.g, Theme.chromePanel.b,
+                       Config.overlayTranslucent ? 0.55 : 0.95)
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, Config.overlayTranslucent ? 0.16 : 0.10)
+        border.color: Theme.borderStrong
         opacity: 0
         scale: 0.97
 
+        // A fade and a 3% scale at `--dur-slow`, the design system's entrance
+        // for an overlay. Deliberately *not* the 4px rise it also asks for: the
+        // window is exactly the pill, and OverlayController derives the KWin
+        // blur region from the window's own geometry — a pill that moves inside
+        // its window would be clipped at the bottom edge and blurred through a
+        // capsule it no longer fills.
         Behavior on opacity {
-            enabled: root.anim
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Theme.durSlow; easing.type: Easing.Bezier
+                              easing.bezierCurve: Theme.easeOut }
         }
         Behavior on scale {
-            enabled: root.anim
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Theme.durSlow; easing.type: Easing.Bezier
+                              easing.bezierCurve: Theme.easeOut }
+        }
+        Behavior on color {
+            ColorAnimation { duration: Theme.durBase }
         }
 
         LogoMark {
@@ -86,7 +101,7 @@ Window {
             anchors.right: badge.left
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            color: Qt.rgba(1, 1, 1, 0.92)
+            color: Theme.text
             font.family: Brand.bodyFamily
             font.pixelSize: 14
             elide: Text.ElideLeft // live text: keep the newest words visible
@@ -104,6 +119,9 @@ Window {
                 return ""
             }
             opacity: App.state === "listening" && App.partialText.length === 0 ? 0.55 : 1.0
+            Behavior on opacity {
+                NumberAnimation { duration: Theme.durBase }
+            }
         }
 
         LocalBadge {

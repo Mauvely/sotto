@@ -3,7 +3,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QGuiApplication>
 #include <QStandardPaths>
+#include <QStyleHints>
 
 namespace {
 const QString kModelId = QStringLiteral("modelId");
@@ -19,6 +22,7 @@ const QString kVoiceCmdNewLine = QStringLiteral("format/voiceCmdNewLine");
 const QString kVoiceCmdNewParagraph = QStringLiteral("format/voiceCmdNewParagraph");
 const QString kVoiceCmdDeleteLastLine = QStringLiteral("format/voiceCmdDeleteLastLine");
 const QString kVoiceCmdDeleteLastSentence = QStringLiteral("format/voiceCmdDeleteLastSentence");
+const QString kTheme = QStringLiteral("appearance/theme");
 const QString kAnimations = QStringLiteral("appearance/animations");
 const QString kOverlayTranslucent = QStringLiteral("appearance/overlayTranslucent");
 const QString kOverlayScreen = QStringLiteral("appearance/overlayScreen");
@@ -34,9 +38,19 @@ const QString kFirstRun = QStringLiteral("firstRun");
 
 Settings::Settings(QObject *parent)
     : QObject(parent)
-    , m_s(QSettings::IniFormat, QSettings::UserScope,
-          QStringLiteral("sotto"), QStringLiteral("sotto"))
 {
+    // m_s is default-constructed: organisation "Mauvely", application "Sotto",
+    // IniFormat (main.cpp sets it as the default format). See the header — the
+    // old hardcoded ("sotto", "sotto") pair is what made the migration a no-op.
+
+    // "system" has to hear about the desktop switching, or the app keeps the
+    // theme it happened to start with until it is restarted.
+    if (auto *hints = QGuiApplication::styleHints()) {
+        connect(hints, &QStyleHints::colorSchemeChanged, this, [this] {
+            if (theme() == QStringLiteral("system"))
+                emit themeChanged();
+        });
+    }
 }
 
 QString Settings::modelId() const { return m_s.value(kModelId, QString()).toString(); }
@@ -68,7 +82,18 @@ void Settings::setShortcutEnabled(bool v)
 
 QString Settings::preferredShortcut() const
 {
-    return m_s.value(kPreferredShortcut, QStringLiteral("LOGO+ALT+d")).toString();
+#ifdef Q_OS_WIN
+    // NOT LOGO+ALT+d on Windows. The shell owns Win+Alt+D (the clock and
+    // calendar flyout), so RegisterHotKey refuses it with
+    // ERROR_HOTKEY_ALREADY_REGISTERED and Sotto shipped with a default global
+    // shortcut that could never bind — the one thing the app is for, dead on
+    // first run, with only a line of small print in Settings to say so.
+    // Ctrl+Alt+D is free on a stock Windows 11; verified by asking Windows.
+    const QString fallback = QStringLiteral("CTRL+ALT+d");
+#else
+    const QString fallback = QStringLiteral("LOGO+ALT+d");
+#endif
+    return m_s.value(kPreferredShortcut, fallback).toString();
 }
 void Settings::setPreferredShortcut(const QString &v)
 {
@@ -157,6 +182,42 @@ void Settings::setVoiceCmdDeleteLastSentence(bool v)
         return;
     m_s.setValue(kVoiceCmdDeleteLastSentence, v);
     emit voiceCmdDeleteLastSentenceChanged();
+}
+
+QString Settings::theme() const
+{
+    if (!m_themeOverride.isEmpty())
+        return m_themeOverride;
+    return m_s.value(kTheme, QStringLiteral("system")).toString();
+}
+void Settings::setTheme(const QString &v)
+{
+    if (theme() == v)
+        return;
+    m_s.setValue(kTheme, v);
+    emit themeChanged();
+}
+
+void Settings::setThemeOverride(const QString &v)
+{
+    if (m_themeOverride == v)
+        return;
+    m_themeOverride = v;
+    emit themeChanged();
+}
+
+bool Settings::darkMode() const
+{
+    const QString t = theme();
+    if (t == QStringLiteral("light"))
+        return false;
+    if (t == QStringLiteral("dark"))
+        return true;
+    // Unknown resolves to dark, which is what Sotto looked like before there
+    // was a light theme at all — a desktop that will not say is not a reason
+    // to change the app's face.
+    auto *hints = QGuiApplication::styleHints();
+    return !hints || hints->colorScheme() != Qt::ColorScheme::Light;
 }
 
 bool Settings::animationsEnabled() const { return m_s.value(kAnimations, true).toBool(); }
