@@ -107,6 +107,30 @@ Guards will not do it.
   replace its own package, so a check whose only possible outcome is "ignore the
   answer" should not be sent.
 
+## Handing off
+
+**Each repo has exactly one `HANDOFF.md`, and it is overwritten, not appended.**
+It says what the last session did here and what the next one needs to know — not
+a changelog. `changes/<hash>.md` and the git log are already the changelog, and a
+handoff that grew forever would be a third copy nobody reads.
+
+Read it first. Rewrite it before finishing, if what you did changes what the next
+session should know; leave it alone if it does not.
+
+What belongs in it:
+
+- **What changed and why**, at the level a person picking this up cold needs —
+  the decision, not the diff.
+- **What is half-done**, named precisely enough to resume: the file, the
+  function, the thing that is missing.
+- **What was tried and rejected**, with the reason. This is the part that saves
+  the most time and is almost always missing.
+- **What is unverified.** A thing that compiles but has never run should say so.
+
+What does not belong in it: anything already true of the code and readable from
+it, anything in `CLAUDE.md` (which is the durable rules, where this is the
+transient state), and a list of commits.
+
 ## Commit Guidelines
 
 When completing a commit:
