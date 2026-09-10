@@ -111,6 +111,50 @@ elseif(NOT SOTTO_GPU STREQUAL "cpu")
     message(FATAL_ERROR "Unknown SOTTO_GPU value '${SOTTO_GPU}' (use cpu|hip|cuda|vulkan)")
 endif()
 
+# ---------------------------------------------------------------------------
+# Why that backend — a sentence for the settings page
+# ---------------------------------------------------------------------------
+# "backend: cpu" on a machine with a discrete GPU reads as a *runtime* failure
+# to find the card. It never is: the backend is chosen here, at configure time,
+# and an artifact built against one will not start without its runtime. So the
+# build says which toolchain it looked for and what it would take to change the
+# answer, and the settings page prints it verbatim (App::gpuBackendReason).
+#
+# ASCII only, and no semicolons: this ends up inside a -D on an MSVC command
+# line, and a `;` in an unquoted CMake expansion is a list separator — it split
+# the definition in two and the compiler reported "newline in constant".
+if(SOTTO_GPU STREQUAL "cpu")
+    # glslc, not just the loader: ggml-vulkan compiles its own shaders, so the
+    # Vulkan *SDK* is the requirement, and a machine can have a working Vulkan
+    # driver (any recent GPU does) with no SDK at all.
+    find_package(Vulkan QUIET COMPONENTS glslc)
+    find_package(CUDAToolkit QUIET)
+
+    set(_sotto_gpu_offer "")
+    if(Vulkan_FOUND AND Vulkan_glslc_FOUND)
+        list(APPEND _sotto_gpu_offer "vulkan")
+    endif()
+    if(CUDAToolkit_FOUND)
+        list(APPEND _sotto_gpu_offer "cuda")
+    endif()
+
+    if(_sotto_gpu_offer)
+        list(GET _sotto_gpu_offer 0 _sotto_gpu_first)
+        string(REPLACE ";" " or " _sotto_gpu_names "${_sotto_gpu_offer}")
+        set(SOTTO_GPU_REASON
+            "Running on the CPU because this build was configured that way, not because no GPU was found. A ${_sotto_gpu_names} toolchain is installed on the build machine: reconfigure with -DSOTTO_GPU=${_sotto_gpu_first} and rebuild to use it.")
+    else()
+        set(SOTTO_GPU_REASON
+            "Running on the CPU because no GPU toolchain was installed when this was built. The backend is a build-time choice and cannot be picked up at run time. For a GPU build, install the LunarG Vulkan SDK (ggml-vulkan compiles its shaders with the SDK's glslc, so a working driver alone is not enough) and reconfigure with -DSOTTO_GPU=vulkan, which works on AMD and NVIDIA alike. CUDA needs the NVIDIA CUDA Toolkit and -DSOTTO_GPU=cuda. Released builds stay on the CPU because one built against a GPU backend will not start on a machine without that runtime.")
+    endif()
+    unset(_sotto_gpu_offer)
+else()
+    set(SOTTO_GPU_REASON
+        "Built with the ${SOTTO_GPU} backend. This binary needs that runtime present to start at all, which is why released builds are CPU-only.")
+endif()
+message(STATUS "whisper.cpp backend: ${SOTTO_GPU}")
+message(STATUS "  ${SOTTO_GPU_REASON}")
+
 FetchContent_Declare(whisper
     GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
     GIT_TAG        v1.9.1
@@ -160,11 +204,28 @@ qt_add_executable(MauvelySotto
     src/stt/ModelManager.h        src/stt/ModelManager.cpp
     src/format/TextFormatter.h    src/format/TextFormatter.cpp
     src/inject/TextInjector.h     src/inject/TextInjector.cpp
+    src/ui/framelesswindow.h      src/ui/framelesswindow.cpp
     src/ui/OverlayController.h    src/ui/OverlayController.cpp
     src/ui/TrayIcon.h             src/ui/TrayIcon.cpp
     ${SOTTO_PLATFORM_SOURCES}
     resources/resources.qrc
 )
+
+# `src` is the suite's convention — every include in this repo is repo-rooted
+# (`#include "ui/framelesswindow.h"`). `src/ui` is here for one reason:
+# qmltyperegistrar records a QML_ELEMENT header by its **bare filename** in the
+# metatypes JSON and then generates
+#
+#     #if __has_include(<framelesswindow.h>)
+#     #  include <framelesswindow.h>
+#     #endif
+#     qmlRegisterTypesAndRevisions<SottoWindow>("Sotto", 1);
+#
+# — so when the include does not resolve, the guard silently skips it and the
+# registration below fails to compile on an undeclared type. Setting
+# CMAKE_AUTOMOC_PATH_PREFIX does not help: it changes moc's own #include, not
+# the recorded JSON name. The directory has to be findable, so it is.
+target_include_directories(MauvelySotto PRIVATE src src/ui)
 
 # pragma Singleton in Brand.qml should be auto-detected, but set the property
 # explicitly too: belt-and-braces against Qt versions/policies where the
@@ -194,6 +255,9 @@ qt_add_qml_module(MauvelySotto
         qml/SPanel.qml
         qml/SSection.qml
         qml/SLabel.qml
+        qml/STitleBar.qml
+        qml/SWindowButton.qml
+        qml/SResizeEdges.qml
         qml/SButton.qml
         qml/SRadio.qml
         qml/SCheckBox.qml
@@ -203,7 +267,6 @@ qt_add_qml_module(MauvelySotto
         qml/SSlider.qml
 )
 
-target_include_directories(MauvelySotto PRIVATE src)
 target_link_libraries(MauvelySotto PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2
     Qt6::Multimedia Qt6::Network
@@ -211,7 +274,10 @@ target_link_libraries(MauvelySotto PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(MauvelySotto PRIVATE user32)
+    # dwmapi: the window's rounded corners and border colour (src/ui/framelesswindow.cpp).
+    # shell32: SHAppBarMessage, which is how the same file finds an auto-hidden
+    # taskbar so a maximised window can leave it a pixel to rise from.
+    target_link_libraries(MauvelySotto PRIVATE user32 dwmapi shell32)
     target_compile_definitions(MauvelySotto PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     set_target_properties(MauvelySotto PROPERTIES WIN32_EXECUTABLE TRUE)
 else()
@@ -221,6 +287,9 @@ endif()
 target_compile_definitions(MauvelySotto PRIVATE
     SOTTO_VERSION="${PROJECT_VERSION}"
     SOTTO_GPU_BACKEND="${SOTTO_GPU}"
+    # Quoted as a whole. Unquoted, CMake splits the expansion on any `;` the
+    # sentence contains and defines half a string literal.
+    "SOTTO_GPU_REASON=\"${SOTTO_GPU_REASON}\""
 )
 
 if(SOTTO_HAVE_LAYER_SHELL)

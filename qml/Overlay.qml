@@ -104,20 +104,18 @@ Window {
             color: Theme.text
             font.family: Brand.bodyFamily
             font.pixelSize: 14
-            elide: Text.ElideLeft // live text: keep the newest words visible
+            // Live transcript elides from the left so the newest words stay
+            // visible; a status line has to elide from the right, or
+            // "Transcribing… 2 passages left" arrives as "…passages left".
+            readonly property bool liveText: App.state === "listening"
+                                             && App.partialText.length > 0
+            elide: liveText ? Text.ElideLeft : Text.ElideRight
             maximumLineCount: 1
-            text: {
-                switch (App.state) {
-                case "loading":    return qsTr("Loading model…")
-                case "finalizing": return qsTr("Formatting…")
-                case "inserting":  return qsTr("Inserting…")
-                case "listening":
-                    return App.partialText.length > 0
-                        ? App.partialText.replace(/\n+/g, "  ")
-                        : qsTr("Listening…")
-                }
-                return ""
-            }
+            // One source for every surface that says what the app is doing —
+            // App::statusText(). It used to say "Formatting…" for the whole of
+            // the finalizing state, which is the state that waits on whisper,
+            // not on the formatter.
+            text: liveText ? App.partialText.replace(/\n+/g, "  ") : App.statusText
             opacity: App.state === "listening" && App.partialText.length === 0 ? 0.55 : 1.0
             Behavior on opacity {
                 NumberAnimation { duration: Theme.durBase }

@@ -27,19 +27,32 @@ public:
     void feed(const QVector<float> &chunk);
     void end();   // finish: finished() fires once outstanding decodes land
     void abort(); // discard everything, go idle immediately
+    /** Give up on the decodes still outstanding and assemble what has landed.
+     *  The escape hatch from a long CPU drain — the alternative was a HUD that
+     *  said "Formatting…" until whisper was done, with no way to stop it. */
+    void finishNow();
 
     bool isActive() const { return m_phase != Phase::Inactive; }
     bool isDraining() const { return m_phase == Phase::Draining; }
+    /** Final decodes still outstanding. What the UI counts down while draining. */
+    int pendingDecodes() const { return int(m_finalRequests.size()); }
 
 signals:
     // Connected to WhisperEngine::transcribe with a queued connection.
     void requestTranscribe(quint64 id, const QVector<float> &audio, const QString &language,
                            const QString &prompt, bool finalPass);
+    /** Every partial request older than `beforeId` is now pointless. Wired to
+     *  WhisperEngine::dropPartialsBefore() with a **direct** connection: the
+     *  worker may be inside whisper_full() on one of them, and a queued call
+     *  would not be read until that decode had finished — which is the wait it
+     *  exists to cut short. */
+    void dropStalePartials(quint64 beforeId);
     void partialTextChanged(const QString &displayText);
+    void pendingDecodesChanged();
     void finished(const QString &formattedText);
 
 public slots:
-    void onTranscribed(quint64 id, const QString &text);
+    void onTranscribed(quint64 id, const QString &text, qint64 elapsedMs);
 
 private:
     enum class Phase { Inactive, Recording, Draining };
@@ -79,5 +92,11 @@ private:
     quint64 m_nextRequestId = 1;
     quint64 m_partialRequestId = 0; // 0 = none in flight
     qint64 m_lastPartialMs = 0;
+    /** What the last partial decode actually cost, in wall-clock ms. On a
+     *  CPU-only build it can exceed the audio it decoded, and asking for the
+     *  next one on the configured cadence regardless is how the worker ends up
+     *  permanently one decode behind — with every *final* queued behind a
+     *  preview. The next partial waits at least this long instead. */
+    qint64 m_lastPartialCostMs = 0;
     QString m_livePartial;
 };

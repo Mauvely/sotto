@@ -47,7 +47,16 @@ class App : public QObject
     Q_PROPERTY(QString injectionDiagnostics READ injectionDiagnostics NOTIFY injectionDiagnosticsChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString gpuBackend READ gpuBackend CONSTANT)
+    Q_PROPERTY(QString gpuBackendLabel READ gpuBackendLabel CONSTANT)
+    Q_PROPERTY(QString gpuBackendReason READ gpuBackendReason CONSTANT)
     Q_PROPERTY(bool blurAvailable READ blurAvailable CONSTANT)
+    // What the app is doing, in words, for whichever surface is showing it.
+    // "Formatting…" used to cover the whole of the Finalizing state, which is
+    // where a CPU decode of a long dictation actually spends its minutes.
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(int pendingDecodes READ pendingDecodes NOTIFY statusTextChanged)
+    // Set from SOTTO_OPEN; empty in a normal run. See main.cpp.
+    Q_PROPERTY(QString harnessOpen READ harnessOpen CONSTANT)
 
 public:
     enum class State { Idle, Loading, Listening, Finalizing, Inserting };
@@ -79,6 +88,12 @@ public:
     QString injectionDiagnostics() const;
     QString version() const { return QStringLiteral(SOTTO_VERSION); }
     QString gpuBackend() const { return QStringLiteral(SOTTO_GPU_BACKEND); }
+    QString gpuBackendLabel() const;
+    QString gpuBackendReason() const;
+    QString statusText() const;
+    int pendingDecodes() const { return m_pendingDecodes; }
+    QString harnessOpen() const { return m_harnessOpen; }
+    void setHarnessOpen(const QString &v) { m_harnessOpen = v; }
     bool blurAvailable() const
     {
 #ifdef SOTTO_HAVE_KWINDOWSYSTEM
@@ -113,6 +128,7 @@ signals:
     void systemInfoChanged();
     void audioDevicesChanged();
     void injectionDiagnosticsChanged();
+    void statusTextChanged();
 
     // Internal: routed to the whisper worker thread.
     void loadModelRequested(const QString &path);
@@ -151,5 +167,8 @@ private:
     QString m_notepadText;
     QString m_lastError;
     QString m_systemInfo;
+    QString m_harnessOpen;
+    int m_pendingDecodes = 0;
+    int m_decodePercent = -1;
     QVector<float> m_levels;
 };

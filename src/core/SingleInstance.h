@@ -12,13 +12,16 @@ class QLocalServer;
 //
 // Linux: wraps DBusService — the session-bus name doubles as the lock and
 // the interface stays scriptable via qdbus/gdbus.
-// Windows: a QLocalServer named pipe carrying one command word
-// ("Toggle", "ShowSettings", …) per connection.
+// Windows: a named mutex is the lock and a QLocalServer named pipe is the
+// transport, carrying one command word ("Toggle", "ShowSettings", …) per
+// connection. The two are separate because the pipe cannot be the lock — see
+// registerPrimary().
 class SingleInstance : public QObject
 {
     Q_OBJECT
 public:
     explicit SingleInstance(App *app, QObject *parent = nullptr);
+    ~SingleInstance() override;
 
     // True if this process is now the primary instance.
     bool registerPrimary();
@@ -30,6 +33,7 @@ private:
     App *m_app;
 #ifdef Q_OS_WIN
     QLocalServer *m_server = nullptr;
+    void *m_lock = nullptr; // HANDLE from CreateMutexW; held for the run
 #else
     DBusService *m_dbus = nullptr;
 #endif

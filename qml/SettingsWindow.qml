@@ -4,11 +4,15 @@ import QtQuick.Layouts
 import Sotto
 
 // Settings, as panels on the window ground (design system § App chrome,
-// 2026-09-09). The header row sits directly on the ground — it is this
-// window's title bar — and every section below it is a 16px-radius panel,
-// 16px apart, with the ground showing between them. The outer margin and the
-// gutters are the same measurement, `Theme.gridGap`.
-Window {
+// 2026-09-09). Every section is a 16px-radius panel, 16px apart, with the
+// ground showing between them. The outer margin and the gutters are the same
+// measurement, `Theme.gridGap`.
+//
+// `SottoWindow`, not `Window`: Sotto draws its own 44px title bar like every
+// other app in the suite, and on Windows the native frame is taken over rather
+// than removed so Snap Layouts, edge resizing and a real maximise all survive.
+// See src/ui/framelesswindow.h.
+SottoWindow {
     id: win
     width: 640
     height: 760
@@ -17,7 +21,28 @@ Window {
     title: qsTr("Sotto — Settings")
     color: Theme.bg
 
+    captionHeight: titleBar.implicitHeight
+    captionExclusions: titleBar.exclusions
+    maximizeButton: titleBar.maximizeButton
+    borderColor: Theme.borderStrong
+
     readonly property bool isWindows: Qt.platform.os === "windows"
+
+    // A failed download used to be invisible: `downloadFinished(id, ok, error)`
+    // had no listener, so the row's progress bar simply disappeared and the
+    // Download button came back. Said once, in the section the button is in,
+    // and cleared the moment another download starts.
+    property string downloadError: ""
+    Connections {
+        target: Models
+        function onDownloadFinished(id, ok, error) {
+            win.downloadError = ok ? "" : qsTr("Download failed: %1").arg(error)
+        }
+        function onDownloadStateChanged() {
+            if (Models.downloadingId !== "")
+                win.downloadError = ""
+        }
+    }
 
     // The Basic style still reaches for the palette in the few places these
     // S* wrappers do not cover (text selection handles, tooltips).
@@ -38,43 +63,20 @@ Window {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gridGap
-        spacing: Theme.gridGap
+        spacing: 0
 
-        // ------------------------------------------------ header (on the ground)
-        RowLayout {
+        STitleBar {
+            id: titleBar
             Layout.fillWidth: true
-            Layout.leftMargin: 4
-            Layout.rightMargin: 4
-            spacing: 14
-
-            LogoMark { size: 34 }
-
-            ColumnLayout {
-                spacing: 2
-                Layout.fillWidth: true
-                Text {
-                    text: "Sotto"
-                    color: Theme.text
-                    font.family: Brand.displayFamily
-                    font.weight: Font.ExtraBold
-                    font.pixelSize: 22
-                }
-                Text {
-                    text: qsTr("100% local dictation — audio never leaves this device.")
-                    color: Theme.textMuted
-                    font.family: Brand.displayFamily
-                    font.pixelSize: 13
-                }
-            }
-
-            LocalBadge {}
+            window: win
+            subtitle: qsTr("100% local dictation — audio never leaves this device.")
         }
 
         Flickable {
             id: flick
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.margins: Theme.gridGap
             contentWidth: width
             contentHeight: content.implicitHeight
             clip: true
@@ -106,7 +108,7 @@ Window {
                         text: qsTr("Models run entirely on this machine via whisper.cpp "
                                    + "(backend: %1). Large v3 Turbo is the sweet spot on a "
                                    + "discrete GPU; Small if you want a light download.")
-                                   .arg(App.gpuBackend)
+                                   .arg(App.gpuBackendLabel)
                     }
 
                     Repeater {
@@ -150,6 +152,13 @@ Window {
                                 color: Theme.textMuted
                                 font.family: Brand.bodyFamily
                                 font.pixelSize: 12
+                            }
+                            Text {
+                                visible: modelData.downloading
+                                text: Models.downloadStatus
+                                color: Theme.textMuted
+                                font.family: Brand.monoFamily
+                                font.pixelSize: 11
                             }
                             ProgressBar {
                                 id: dlBar
@@ -200,6 +209,12 @@ Window {
                         }
                     }
 
+                    SLabel {
+                        visible: win.downloadError.length > 0
+                        color: Theme.danger
+                        text: win.downloadError
+                    }
+
                     RowLayout {
                         spacing: 10
                         Text {
@@ -230,7 +245,15 @@ Window {
                                 { name: "한국어", code: "ko" },
                                 { name: "中文", code: "zh" }
                             ]
-                            Component.onCompleted: currentIndex = Math.max(0, indexOfValue(Config.language))
+                            Component.onCompleted: {
+                                currentIndex = Math.max(0, indexOfValue(Config.language))
+                                // SOTTO_OPEN=combo: a drop-down is the one piece
+                                // of chrome a screenshot of the settled window
+                                // cannot show, and it is where the text went
+                                // missing.
+                                if (App.harnessOpen === "combo")
+                                    Qt.callLater(popup.open)
+                            }
                             onActivated: Config.language = currentValue
                         }
                     }
@@ -533,7 +556,15 @@ Window {
                     }
 
                     SLabel {
-                        text: qsTr("Sotto %1 · whisper.cpp backend: %2").arg(App.version).arg(App.gpuBackend)
+                        text: qsTr("Sotto %1 · whisper.cpp backend: %2")
+                              .arg(App.version).arg(App.gpuBackendLabel)
+                    }
+                    // Why it is that backend, in the same breath as which one it
+                    // is. "cpu" on its own leaves a reader with a discrete GPU
+                    // wondering whether the app failed to find it at run time,
+                    // when the answer is always build time.
+                    SLabel {
+                        text: App.gpuBackendReason
                     }
                     SLabel {
                         visible: App.systemInfo.length > 0
@@ -544,4 +575,6 @@ Window {
             }
         }
     }
+
+    SResizeEdges { window: win }
 }

@@ -24,7 +24,7 @@ into it. Assumptions that hold in Compose, Snap, Relay, Mail, Play and Suite do
 
 | | |
 |---|---|
-| **QML, not widgets** | The UI is `qml/` driven from `src/ui/`. There is no `FramelessWindow`, no `TitleBar`, no `ui::widgets.h`. The suite's window-chrome work — including the Windows native-frame takeover — does not apply and was correctly skipped. |
+| **QML, not widgets** | The UI is `qml/` driven from `src/ui/`. There is no `ui::widgets.h`. Since 2026-09-10 there *is* window chrome: `src/ui/framelesswindow.{h,cpp}` is Sotto's own **QQuickWindow** port of the suite's shell, and `qml/{STitleBar,SWindowButton,SResizeEdges}.qml` are the title bar the QWidget version builds out of child widgets. It is **not** the pinned copy — app-base's file is a QWidget and is byte-identical across four repos; neither may be copied onto the other. What is ported is the Windows half, line for line: `kFrameStyles`, `ensureWindowsFrame()`, `WM_NCCALCSIZE`/`WM_NCHITTEST`/`HTMAXBUTTON`, `autoHideEdge()` and a `toggleMaximized()` that goes through `ShowWindow(SW_MAXIMIZE)`. |
 | **No `brand.h`, no `branding.{h,cpp}`** | The shared colour table and the organisation-branding port are absent, and so is `branding_interop`. Colour lives in QML: `qml/Brand.qml` is the raw ramps and `qml/Theme.qml` is the semantic layer, the two of them mirroring the siblings' `src/core/{brand,theme}.h` by hand. Nothing checks that they agree. |
 | **No `core_smoke`** | Two focused test binaries instead — `test_formatter` and `test_speechgate`, both registered with CTest. |
 | **`cmake/MauvelyAppInfo.cmake` is current** | It is the one shared file this repo does carry, and it is in step with app-base's. |
@@ -95,7 +95,23 @@ QT_QPA_PLATFORM=offscreen SOTTO_SHOT=/tmp/x.png SOTTO_VIEW=settings \
 | `SOTTO_SHOT=<path>` | grab the window after 900 ms, then quit |
 | `SOTTO_VIEW=settings\|notepad\|overlay` | which window (default `settings`) |
 | `SOTTO_THEME=dark\|light\|system` | force a theme **for this run only** — never written to disk |
-| `SOTTO_SIZE=<w>x<h>` | resize before grabbing; the settings page is ~1750px tall and its window is 760 |
+| `SOTTO_SIZE=<w>x<h>` | resize before grabbing; the settings page is ~2000px tall and its window is 760 |
+| `SOTTO_OPEN=combo` | open the language drop-down first. A popup is the one piece of chrome a shot of the settled window cannot show, and it is where the item text went missing on 2026-09-10 |
+| `SOTTO_STATE=finalizing` | with `SOTTO_VIEW=overlay`, render the HUD as it looks while whisper is still draining rather than while listening |
+
+There is a second harness with no window at all, for the model downloader — the
+one part of the app with no UI-free way to exercise it, and the one whose
+failure mode was "sits at 0% and says nothing":
+
+```sh
+SOTTO_DOWNLOAD=tiny ./MauvelySotto                              # 78 MB, the cheap probe
+SOTTO_DOWNLOAD=large-v3 SOTTO_DOWNLOAD_SECONDS=60 ./MauvelySotto
+```
+
+It prints a line a second to **stderr** and exits 0 on success, 1 on failure,
+2 when the time cap ran out first. Deliberately no `attachParentConsole()`:
+borrowing the parent console re-points stderr at `CONOUT$` and throws away a
+`2>` the caller asked for.
 
 `overlay` drives the HUD into `listening` with sample levels and a line of
 partial text, because an idle pill is a transparent rectangle. The harness skips
@@ -103,6 +119,21 @@ partial text, because an idle pill is a transparent rectangle. The harness skips
 exiting would leave you waiting for a file nobody writes — and it quits through
 `App::quit()`, without which the windows outlive the QML engine and the run ends
 in a page of `TypeError: Cannot read property 'state' of null`.
+
+**A QML delegate pinned to a height needs `padding: 0`.**
+`QtQuick.Controls.Basic`'s `ItemDelegate` defaults to `padding: 12`, so a
+delegate given `height: 30` hands its `contentItem` an availableHeight of 6 —
+and a `Text` with `elide` set does not overflow a box too short for a line, it
+elides the line away and draws nothing. Every drop-down in the app was a list of
+correctly sized, correctly highlighted, **empty** rows. The other `S*` controls
+already set `padding: 0`; `SComboBox`'s delegate was the one that did not.
+
+**A ComboBox delegate gets its label from `control.textAt(index)`.** Not from
+the `Array.isArray(control.model) ? modelData[textRole] : model[textRole]` shape
+in Qt's own customisation example: a model whose items are objects exposes its
+keys as roles, so `modelData` is not the item and `modelData[textRole]` is
+`undefined`. That is ComboBox's own C++ answer to the question and it is right
+for a plain string list and a role-bearing object alike.
 
 **Never name a QML property `on` + a capital.** `Theme.onPrimary` is what the
 sibling apps' C++ calls the ink on a filled brand surface; in QML that name

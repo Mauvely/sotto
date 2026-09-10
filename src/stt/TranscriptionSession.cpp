@@ -40,8 +40,10 @@ void TranscriptionSession::begin()
     m_finalRequests.clear();
     m_partialRequestId = 0;
     m_lastPartialMs = 0;
+    m_lastPartialCostMs = 0;
     m_livePartial.clear();
     emit partialTextChanged(QString());
+    emit pendingDecodesChanged();
 }
 
 void TranscriptionSession::abort()
@@ -49,8 +51,10 @@ void TranscriptionSession::abort()
     m_phase = Phase::Inactive;
     m_finalRequests.clear();
     m_partialRequestId = 0;
+    emit dropStalePartials(m_nextRequestId);
     m_committed.clear();
     m_livePartial.clear();
+    emit pendingDecodesChanged();
 }
 
 void TranscriptionSession::feed(const QVector<float> &chunk)
@@ -112,7 +116,12 @@ void TranscriptionSession::processWindow(const float *data, int count)
 void TranscriptionSession::maybeRequestPartial()
 {
     const qint64 now = nowMs();
-    if (m_partialRequestId != 0 || now - m_lastPartialMs < m_settings->partialIntervalMs())
+    // The cadence is a floor, not a schedule. `nowMs()` is the audio sample
+    // clock, which during a live recording advances with wall time, so the last
+    // decode's own cost is directly comparable: a machine where a partial takes
+    // three seconds asks for one every three seconds, not every 1.1.
+    const qint64 cadence = qMax<qint64>(m_settings->partialIntervalMs(), m_lastPartialCostMs);
+    if (m_partialRequestId != 0 || now - m_lastPartialMs < cadence)
         return;
     if (m_utterance.size() < 16000 * 4 / 5) // wait for at least 0.8 s of audio
         return;
@@ -158,7 +167,15 @@ void TranscriptionSession::finalizeUtterance(bool force)
     const quint64 id = m_nextRequestId++;
     m_finalRequests.insert(id, m_committed.size() - 1);
     m_livePartial.clear();
+
+    // The preview of this utterance is now worth nothing — the utterance itself
+    // is about to be decoded properly. Cancelling it before queueing the final
+    // is what stops the final waiting behind it.
+    m_partialRequestId = 0;
+    emit dropStalePartials(id);
+
     emit requestTranscribe(id, audio, m_settings->language(), promptContext(), true);
+    emit pendingDecodesChanged();
 }
 
 void TranscriptionSession::end()
@@ -168,13 +185,27 @@ void TranscriptionSession::end()
     if (m_inUtterance)
         finalizeUtterance(true);
     m_phase = Phase::Draining;
+    // Nothing partial matters once the recording has stopped.
+    m_partialRequestId = 0;
+    emit dropStalePartials(m_nextRequestId);
     assembleIfDone();
 }
 
-void TranscriptionSession::onTranscribed(quint64 id, const QString &text)
+void TranscriptionSession::finishNow()
+{
+    if (m_phase != Phase::Draining)
+        return;
+    m_finalRequests.clear();
+    emit dropStalePartials(m_nextRequestId);
+    emit pendingDecodesChanged();
+    assembleIfDone();
+}
+
+void TranscriptionSession::onTranscribed(quint64 id, const QString &text, qint64 elapsedMs)
 {
     if (id == m_partialRequestId) {
         m_partialRequestId = 0;
+        m_lastPartialCostMs = elapsedMs;
         if (m_inUtterance || m_phase == Phase::Recording) {
             m_livePartial = text;
             emitPartial();
@@ -184,10 +215,11 @@ void TranscriptionSession::onTranscribed(quint64 id, const QString &text)
 
     const auto it = m_finalRequests.constFind(id);
     if (it == m_finalRequests.constEnd())
-        return; // stale request from an aborted session
+        return; // stale request from an aborted session, or a dropped partial
     m_committed[it.value()].text = text;
     m_committed[it.value()].decoded = true;
     m_finalRequests.erase(it);
+    emit pendingDecodesChanged();
     emitPartial();
     assembleIfDone();
 }

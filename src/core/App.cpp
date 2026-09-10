@@ -75,6 +75,27 @@ void App::initialize()
     connect(m_session, &TranscriptionSession::requestTranscribe, m_whisper, &WhisperEngine::transcribe);
     connect(m_whisper, &WhisperEngine::transcribed, m_session, &TranscriptionSession::onTranscribed);
 
+    // **Direct**, and deliberately so. The worker may be inside whisper_full()
+    // on the very partial this cancels, and a queued call would only be read
+    // after that decode finished — which is the wait it exists to cut short.
+    // dropPartialsBefore() is an atomic store for exactly this reason.
+    connect(
+        m_session, &TranscriptionSession::dropStalePartials, m_whisper,
+        [this](quint64 beforeId) { m_whisper->dropPartialsBefore(beforeId); },
+        Qt::DirectConnection);
+
+    connect(m_session, &TranscriptionSession::pendingDecodesChanged, this, [this] {
+        m_pendingDecodes = m_session->pendingDecodes();
+        m_decodePercent = -1;
+        emit statusTextChanged();
+    });
+    connect(m_whisper, &WhisperEngine::decodeProgress, this, [this](quint64, int percent) {
+        if (m_state != State::Finalizing)
+            return;
+        m_decodePercent = percent;
+        emit statusTextChanged();
+    });
+
     // Audio -> session + visualiser.
     connect(m_capture, &AudioCapture::samples, m_session, &TranscriptionSession::feed);
     connect(m_capture, &AudioCapture::level, this, [this](float v) {
@@ -148,7 +169,47 @@ void App::setState(State s)
         m_levels.fill(0.0f);
         emit levelsChanged();
     }
+    if (s != State::Finalizing)
+        m_decodePercent = -1;
     emit stateChanged();
+    emit statusTextChanged();
+}
+
+// What the HUD, the notepad's transport strip and the tray tooltip all say.
+//
+// The old text called the whole Finalizing state "Formatting…", which is where
+// this went wrong: formatting is TextFormatter::format(), a few regular
+// expressions over a few kilobytes, and it has never taken a measurable amount
+// of time. What Finalizing actually waits for is whisper decoding the utterances
+// that were committed while the person was still speaking — minutes of it, on a
+// CPU-only build with a large model. A label that names the cheap step and hides
+// the expensive one is how "stuck on formatting" became the report.
+QString App::statusText() const
+{
+    switch (m_state) {
+    case State::Idle:
+        return QString();
+    case State::Loading:
+        return tr("Loading the model…");
+    case State::Listening:
+        return tr("Listening…");
+    case State::Inserting:
+        return tr("Inserting…");
+    case State::Finalizing:
+        // Not tr("…%n passage(s) left", nullptr, n): the (s) plural markup is a
+        // Qt Linguist convention that only a loaded translation resolves, and
+        // Sotto has none yet — it rendered literally as "2 passage(s) left".
+        // This branch only runs for n > 1, so the plural is unconditional.
+        // Short because the HUD is a 440px pill and this shares it with the
+        // logo, the level bars and the LOCAL badge — about 180px of room.
+        if (m_pendingDecodes > 1)
+            return tr("Transcribing… %1 left").arg(m_pendingDecodes);
+        if (m_pendingDecodes == 1)
+            return m_decodePercent >= 0 ? tr("Transcribing… %1%").arg(m_decodePercent)
+                                        : tr("Transcribing…");
+        return tr("Formatting…");
+    }
+    return QString();
 }
 
 void App::setError(const QString &message)
@@ -165,7 +226,13 @@ void App::toggle()
         startDictation(int(Target::Inject));
     else if (m_state == State::Listening)
         stopDictation();
-    // Loading/finalizing/inserting: ignore rather than queue surprises.
+    else if (m_state == State::Finalizing)
+        // The escape hatch. A CPU decode of a long dictation can run for
+        // minutes, and pressing the shortcut again used to do nothing at all —
+        // the app looked hung, with no way out but killing it. A second press
+        // now takes what has decoded and stops waiting for the rest.
+        m_session->finishNow();
+    // Loading/inserting: ignore rather than queue surprises.
 }
 
 void App::startDictation(int target)
@@ -323,7 +390,17 @@ QQuickWindow *App::harnessWindow(const QString &view)
         for (int i = 0; i < m_levels.size(); ++i)
             m_levels[i] = 0.12f + 0.80f * float(qFabs(std::sin(i * 0.8)));
         emit levelsChanged();
-        setState(State::Listening); // the HUD shows itself when state leaves idle
+        // SOTTO_STATE=finalizing renders the state a person waits in, which is
+        // the one that had nothing to look at. A previous session tried a
+        // harness state variable and dropped it because the HUD only drew while
+        // listening; it draws a countdown now, so there is something to check.
+        const QString state = qEnvironmentVariable("SOTTO_STATE");
+        if (state == QLatin1String("finalizing")) {
+            m_pendingDecodes = 2;
+            setState(State::Finalizing);
+        } else {
+            setState(State::Listening); // the HUD shows itself when state leaves idle
+        }
         return m_overlay ? m_overlay->window() : nullptr;
     }
     return ensureWindow(m_settingsWindow, QStringLiteral("SettingsWindow.qml"));
@@ -416,4 +493,33 @@ QStringList App::screenNames() const
 QString App::injectionDiagnostics() const
 {
     return TextInjector::diagnostics();
+}
+
+// ---------------------------------------------------------------------------
+// The backend line
+//
+// `SOTTO_GPU_BACKEND` is the build's answer and `SOTTO_GPU_REASON` is why —
+// both baked in by CMakeLists.txt, which is the only place that knows whether a
+// toolchain was found. A user with a discrete GPU reading "cpu" will otherwise
+// assume the app failed to *find* the card at run time; the answer is always
+// build time, and an artifact built against a GPU backend will not start on a
+// machine without that runtime, which is why the shipped build is cpu.
+
+QString App::gpuBackendLabel() const
+{
+    const QString key = gpuBackend();
+    if (key == QLatin1String("cpu"))
+        return tr("CPU");
+    if (key == QLatin1String("cuda"))
+        return tr("CUDA (NVIDIA)");
+    if (key == QLatin1String("vulkan"))
+        return tr("Vulkan");
+    if (key == QLatin1String("hip"))
+        return tr("HIP (AMD ROCm)");
+    return key;
+}
+
+QString App::gpuBackendReason() const
+{
+    return QString::fromUtf8(SOTTO_GPU_REASON);
 }

@@ -73,32 +73,51 @@ ComboBox {
         contentItem: ListView {
             clip: true
             implicitHeight: contentHeight
-            model: control.delegateModel
+            // Only while it is open, as Qt's own customisation example has it:
+            // a ListView bound to the delegate model permanently keeps a set of
+            // delegates alive behind a closed popup.
+            model: control.popup.visible ? control.delegateModel : null
             currentIndex: control.highlightedIndex
             ScrollIndicator.vertical: ScrollIndicator {}
         }
     }
 
-    // Verbatim from Qt's own ComboBox customisation example, which is the only
-    // shape that works for both a plain string list and a list of objects with
-    // a textRole.
+    // ── Two separate bugs lived in this delegate, and both drew empty rows ──
+    //
+    // 1. The text came from the shape Qt's ComboBox customisation *example*
+    //    uses — `Array.isArray(control.model) ? modelData[textRole]
+    //    : model[textRole]`. Every combo in this app whose model is a JS array
+    //    of objects (language, behaviour, injection mode, theme) went down the
+    //    `modelData[...]` branch and got **undefined**: a multi-role item
+    //    exposes its keys as roles, and `modelData` is only the item itself for
+    //    a single-value model. The console said so on every row — "Unable to
+    //    assign [undefined] to QString" — and the popup drew a list of blank
+    //    rows with a working highlight. `control.textAt(index)` is ComboBox's
+    //    own C++ resolution of exactly this question and is right for a plain
+    //    string list and a role-bearing object alike.
+    //
+    // 2. `padding: 0`, and it is load-bearing. Basic's ItemDelegate defaults to
+    //    `padding: 12`, so a delegate pinned to 30px hands its contentItem an
+    //    availableHeight of 30 − 24 = 6. A Text with `elide` set does not
+    //    overflow a box too short for a line — it elides the line away and
+    //    draws nothing. So even with (1) fixed the rows would still have been
+    //    empty. The closed control was never affected: there the same Text gets
+    //    the control's full height.
     delegate: ItemDelegate {
         id: item
         width: control.width - 8
         height: 30
         highlighted: control.highlightedIndex === index
+        padding: 0
 
         contentItem: Text {
-            text: control.textRole
-                  ? (Array.isArray(control.model)
-                     ? modelData[control.textRole]
-                     : model[control.textRole])
-                  : modelData
+            text: control.textAt(index)
             font: control.font
             color: Theme.textBody
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
-            leftPadding: 8
+            leftPadding: 10
+            rightPadding: 10
         }
 
         background: Rectangle {

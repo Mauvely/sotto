@@ -1,11 +1,33 @@
 #include "stt/WhisperEngine.h"
 
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QThread>
 
 #include <whisper.h>
 
+#include <algorithm>
 #include <thread>
+
+namespace {
+/** How many threads a decode gets.
+ *
+ *  Was `min(8, max(2, hardware_concurrency()))`. Eight is a reasonable ceiling
+ *  on a small machine and a waste on a 24-thread one, which is exactly the
+ *  machine where a CPU-only build is slowest in wall-clock terms and most needs
+ *  the help. Two are left for the GUI and the audio callback: whisper saturates
+ *  every thread it is given, and a decode that starves the render thread is a
+ *  frozen window whatever the state label says. Sixteen is where whisper.cpp's
+ *  own scaling flattens out.
+ */
+int decodeThreads()
+{
+    const unsigned hw = std::thread::hardware_concurrency();
+    if (hw == 0)
+        return 4;
+    return int(std::clamp<unsigned>(hw - 2, 2u, 16u));
+}
+} // namespace
 
 WhisperEngine::WhisperEngine(QObject *parent)
     : QObject(parent)
@@ -22,6 +44,21 @@ WhisperEngine::WhisperEngine(QObject *parent)
 WhisperEngine::~WhisperEngine()
 {
     unload();
+}
+
+void WhisperEngine::dropPartialsBefore(quint64 id)
+{
+    // Monotonic: a later call must never lower the bar.
+    quint64 prev = m_dropPartialsBefore.load(std::memory_order_relaxed);
+    while (prev < id
+           && !m_dropPartialsBefore.compare_exchange_weak(prev, id, std::memory_order_relaxed))
+        ;
+}
+
+bool WhisperEngine::shouldAbortCurrent() const
+{
+    return !m_currentIsFinal
+        && m_currentId < m_dropPartialsBefore.load(std::memory_order_relaxed);
 }
 
 void WhisperEngine::unload()
@@ -57,9 +94,19 @@ void WhisperEngine::transcribe(quint64 id, const QVector<float> &audio, const QS
                                const QString &prompt, bool finalPass)
 {
     if (!m_ctx) {
-        emit transcribed(id, QString());
+        emit transcribed(id, QString(), 0);
         return;
     }
+
+    // Queued behind something that has since made it pointless: the utterance
+    // was committed, or the recording ended, while this partial waited its turn.
+    if (!finalPass && id < m_dropPartialsBefore.load(std::memory_order_relaxed)) {
+        emit transcribed(id, QString(), 0);
+        return;
+    }
+
+    m_currentId = id;
+    m_currentIsFinal = finalPass;
 
     // whisper_full needs at least ~1 s of audio; pad with silence.
     QVector<float> samples = audio;
@@ -82,19 +129,47 @@ void WhisperEngine::transcribe(quint64 id, const QVector<float> &audio, const QS
     p.suppress_nst = true;
     p.language = lang.constData();
     p.initial_prompt = promptUtf8.isEmpty() ? nullptr : promptUtf8.constData();
-    p.n_threads = std::min(8u, std::max(2u, std::thread::hardware_concurrency()));
+    p.n_threads = decodeThreads();
     p.temperature = 0.0f;
     p.temperature_inc = finalPass ? 0.2f : 0.0f; // partials: no fallback retries
     p.greedy.best_of = finalPass ? 2 : 1;
 
+    // The two ggml callbacks. Both run on this thread, inside whisper_full().
+    p.abort_callback = [](void *user) -> bool {
+        return static_cast<WhisperEngine *>(user)->shouldAbortCurrent();
+    };
+    p.abort_callback_user_data = this;
+    if (finalPass) {
+        p.progress_callback = [](whisper_context *, whisper_state *, int progress, void *user) {
+            auto *self = static_cast<WhisperEngine *>(user);
+            emit self->decodeProgress(self->m_currentId, progress);
+        };
+        p.progress_callback_user_data = this;
+    }
+
+    QElapsedTimer clock;
+    clock.start();
+
     QString text;
-    if (whisper_full(m_ctx, p, samples.constData(), samples.size()) == 0) {
+    const int rc = whisper_full(m_ctx, p, samples.constData(), samples.size());
+    const qint64 elapsed = clock.elapsed();
+
+    if (shouldAbortCurrent()) {
+        // Abandoned mid-decode. Whatever whisper had is a fragment of a preview
+        // nobody is waiting for any more.
+        emit transcribed(id, QString(), elapsed);
+        m_currentId = 0;
+        return;
+    }
+
+    if (rc == 0) {
         const int n = whisper_full_n_segments(m_ctx);
         for (int i = 0; i < n; ++i)
             text += QString::fromUtf8(whisper_full_get_segment_text(m_ctx, i));
     } else {
-        qWarning() << "whisper_full failed for request" << id;
+        qWarning() << "whisper_full failed for request" << id << "rc" << rc;
     }
 
-    emit transcribed(id, text.trimmed());
+    m_currentId = 0;
+    emit transcribed(id, text.trimmed(), elapsed);
 }

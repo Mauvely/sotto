@@ -2,8 +2,10 @@
 #include "core/App.h"
 #include "core/SingleInstance.h"
 #include "core/Settings.h"
+#include "stt/ModelManager.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -131,6 +133,55 @@ int main(int argc, char *argv[])
     Settings settings;
     App sotto(&settings);
 
+    // ── Download harness ─────────────────────────────────────────────────
+    // The model downloader is the one thing in the app with no UI-free way to
+    // exercise it, and "it does nothing and sits at 0%" is not a report anyone
+    // can act on without watching the bytes. This drives ModelManager headless
+    // and prints a line a second.
+    //
+    //   SOTTO_DOWNLOAD=tiny ./MauvelySotto            # 78 MB, the cheap probe
+    //   SOTTO_DOWNLOAD=large-v3 SOTTO_DOWNLOAD_SECONDS=60 ./MauvelySotto
+    //
+    // Exits 0 when the model lands, 1 when it fails, 2 when the time cap ran
+    // out first. It never touches the window, the tray or SingleInstance.
+    const QString wanted = qEnvironmentVariable("SOTTO_DOWNLOAD");
+    if (!wanted.isEmpty()) {
+        // Deliberately *not* attachParentConsole(): borrowing the parent's
+        // console re-points stderr at CONOUT$, which throws away a `2>` the
+        // caller asked for. The screenshot harness below writes to stderr the
+        // same way and for the same reason.
+        auto *models = new ModelManager(&app);
+        std::fprintf(stderr, "[dl] %s -> %s\n", qUtf8Printable(wanted),
+                     qUtf8Printable(QDir::toNativeSeparators(ModelManager::modelsDir())));
+        auto *tick = new QTimer(&app);
+        tick->setInterval(1000);
+        QObject::connect(tick, &QTimer::timeout, &app, [models] {
+            std::fprintf(stderr, "[dl] %5.1f%%  %s\n", models->downloadProgress() * 100.0,
+                         qUtf8Printable(models->downloadStatus()));
+            std::fflush(stderr);
+        });
+        QObject::connect(models, &ModelManager::downloadFinished, &app,
+                         [&app](const QString &id, bool ok, const QString &error) {
+                             std::fprintf(stderr, "[dl] %s: %s%s%s\n", qUtf8Printable(id),
+                                          ok ? "OK" : "FAILED", ok ? "" : " — ",
+                                          ok ? "" : qUtf8Printable(error));
+                             std::fflush(stderr);
+                             app.exit(ok ? 0 : 1);
+                         });
+        const int cap = qEnvironmentVariableIntValue("SOTTO_DOWNLOAD_SECONDS");
+        if (cap > 0)
+            QTimer::singleShot(cap * 1000, &app, [&app, models] {
+                std::fprintf(stderr, "[dl] time cap reached at %.1f%%\n",
+                             models->downloadProgress() * 100.0);
+                std::fflush(stderr);
+                models->cancelDownload();
+                app.exit(2);
+            });
+        tick->start();
+        models->download(wanted);
+        return app.exec();
+    }
+
     // ── Screenshot harness ───────────────────────────────────────────────
     // Renders one window headless and exits, so the chrome can be looked at
     // without a display. The suite's other apps spell this CE_SHOT/SNAP_SHOT;
@@ -147,6 +198,15 @@ int main(int argc, char *argv[])
     //                                         settings page is several times
     //                                         taller than its window, and a
     //                                         640×760 grab shows two panels
+    //   SOTTO_OPEN=combo                      open the language drop-down before
+    //                                         grabbing. A popup is the one piece
+    //                                         of chrome a shot of the settled
+    //                                         window cannot show, and it is
+    //                                         where the item text went missing.
+    //   SOTTO_STATE=finalizing                with SOTTO_VIEW=overlay: render the
+    //                                         HUD as it looks while whisper is
+    //                                         still draining, rather than while
+    //                                         listening
     //
     // It deliberately skips SingleInstance: a render is not a session, and
     // forwarding "ShowSettings" to a running copy and exiting would leave the
@@ -156,6 +216,7 @@ int main(int argc, char *argv[])
         const QString forcedTheme = qEnvironmentVariable("SOTTO_THEME");
         if (!forcedTheme.isEmpty())
             settings.setThemeOverride(forcedTheme);
+        sotto.setHarnessOpen(qEnvironmentVariable("SOTTO_OPEN"));
 
         sotto.initialize();
         QQuickWindow *w = sotto.harnessWindow(qEnvironmentVariable("SOTTO_VIEW"));
@@ -204,6 +265,13 @@ int main(int argc, char *argv[])
         SingleInstance::forwardToRunning(method);
         return 0;
     }
+
+    // Nothing was running, so there is nothing to stop. Starting a whole
+    // background instance — tray icon, hotkey, the lot — in order to honour
+    // `--quit` is the opposite of what was asked, and that is exactly what this
+    // fell through to doing.
+    if (args.contains(QStringLiteral("--quit")) || args.contains(QStringLiteral("--stop")))
+        return 0;
 
     sotto.initialize();
 

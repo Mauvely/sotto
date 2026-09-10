@@ -6,9 +6,10 @@ import Sotto
 // Dictate into a scratch buffer instead of the focused app.
 //
 // Two panels on the ground: the editor, and the transport strip under it. The
-// header row is chrome and sits on the ground itself, like the settings
-// window's — see the design system § App chrome (2026-09-09).
-Window {
+// 44px title bar is chrome and sits on the ground itself — see the design system
+// § App chrome (2026-09-09) and src/ui/framelesswindow.h for why the window is
+// a `SottoWindow` rather than a `Window`.
+SottoWindow {
     id: win
     width: 580
     height: 540
@@ -16,6 +17,11 @@ Window {
     minimumHeight: 300
     title: qsTr("Sotto — Notepad")
     color: Theme.bg
+
+    captionHeight: titleBar.implicitHeight
+    captionExclusions: titleBar.exclusions
+    maximizeButton: titleBar.maximizeButton
+    borderColor: Theme.borderStrong
 
     palette {
         window: Theme.bg
@@ -34,28 +40,21 @@ Window {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gridGap
-        spacing: Theme.gridGap
+        spacing: 0
 
-        RowLayout {
+        STitleBar {
+            id: titleBar
             Layout.fillWidth: true
-            Layout.leftMargin: 4
-            Layout.rightMargin: 4
-            spacing: 12
-            LogoMark { size: 24 }
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Dictate here, take the text anywhere.")
-                color: Theme.textMuted
-                font.family: Brand.displayFamily
-                font.pixelSize: 13
-            }
-            LocalBadge {}
+            window: win
+            subtitle: qsTr("Dictate here, take the text anywhere.")
         }
 
         SPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.leftMargin: Theme.gridGap
+            Layout.rightMargin: Theme.gridGap
+            Layout.topMargin: Theme.gridGap
             padding: 16
 
             ScrollView {
@@ -108,6 +107,7 @@ Window {
 
         SPanel {
             Layout.fillWidth: true
+            Layout.margins: Theme.gridGap
             tinted: true
             padding: 12
 
@@ -142,6 +142,17 @@ Window {
                     animated: Config.animationsEnabled
                 }
 
+                // What the app is actually doing once recording stops. "Working…"
+                // on the button alone said nothing about how long a CPU decode of
+                // a long dictation still has to run.
+                Text {
+                    visible: win.busy
+                    text: App.statusText
+                    color: Theme.textMuted
+                    font.family: Brand.bodyFamily
+                    font.pixelSize: 12
+                }
+
                 Item { Layout.fillWidth: true }
 
                 SButton {
@@ -159,4 +170,6 @@ Window {
             }
         }
     }
+
+    SResizeEdges { window: win }
 }
