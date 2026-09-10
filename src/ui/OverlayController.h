@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QQuickWindow>
+#include <QRegion>
 
 class QQmlEngine;
 class Settings;
@@ -34,6 +35,11 @@ private:
     void configureLayerShell();
     void positionFallback();
     void applyBlurBehind();
+    /** The capsule Overlay.qml draws, as a region — the window's mask on a
+     *  compositor that would otherwise treat the window as its rectangle, and
+     *  KWin's blur-behind region. */
+    QRegion pillRegion() const;
+    void applyMask();
 
     QQmlEngine *m_engine;
     Settings *m_settings;

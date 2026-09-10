@@ -67,9 +67,20 @@ bool OverlayController::initialize()
         m_window->setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool
                            | Qt::WindowDoesNotAcceptFocus);
         connect(m_window, &QWindow::visibleChanged, this, [this](bool visible) {
-            if (visible)
+            if (visible) {
                 positionFallback();
+                applyMask();
+            }
         });
+        // The window's shape is the pill's. Without a region the compositor
+        // treats the window as its rectangle: on Windows 11 DWM draws its
+        // drop shadow around that rectangle, so a box shows behind a pill
+        // that fills only the capsule of it (Timur, 2026-09-10 — Snap's
+        // recording island had the same). The region clips the window to
+        // the capsule and the shadow goes with it.
+        connect(m_window, &QWindow::widthChanged, this, &OverlayController::applyMask);
+        connect(m_window, &QWindow::heightChanged, this, &OverlayController::applyMask);
+        applyMask();
     }
 
     connect(m_settings, &Settings::overlayScreenChanged, this, &OverlayController::applyScreenSetting);
@@ -86,6 +97,29 @@ bool OverlayController::initialize()
     return true;
 }
 
+QRegion OverlayController::pillRegion() const
+{
+    // The capsule Overlay.qml draws: two half-circles and the run between.
+    if (!m_window)
+        return {};
+    const int w = m_window->width();
+    const int h = m_window->height();
+    if (w <= 0 || h <= 0)
+        return {};
+    const int r = h / 2;
+    QRegion region(r, 0, w - 2 * r, h);
+    region += QRegion(0, 0, 2 * r, h, QRegion::Ellipse);
+    region += QRegion(w - 2 * r, 0, 2 * r, h, QRegion::Ellipse);
+    return region;
+}
+
+void OverlayController::applyMask()
+{
+    if (!m_window || m_usingLayerShell)
+        return;
+    m_window->setMask(pillRegion());
+}
+
 void OverlayController::applyBlurBehind()
 {
 #ifdef SOTTO_HAVE_KWINDOWSYSTEM
@@ -93,15 +127,7 @@ void OverlayController::applyBlurBehind()
         return;
     // Blur only the pill's capsule shape; a full-window region would show
     // blurred rectangles poking out of the rounded corners.
-    QRegion region;
-    if (m_settings->overlayTranslucent()) {
-        const int w = m_window->width();
-        const int h = m_window->height();
-        const int r = h / 2;
-        region = QRegion(r, 0, w - 2 * r, h);
-        region += QRegion(0, 0, 2 * r, h, QRegion::Ellipse);
-        region += QRegion(w - 2 * r, 0, 2 * r, h, QRegion::Ellipse);
-    }
+    const QRegion region = m_settings->overlayTranslucent() ? pillRegion() : QRegion();
     KWindowEffects::enableBlurBehind(m_window, m_settings->overlayTranslucent(), region);
 #endif
 }

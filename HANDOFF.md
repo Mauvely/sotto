@@ -1,3 +1,18 @@
+# Handoff — 2026-09-10 (late): the overlay's box shadow
+
+Timur: the HUD pill has "a strange shadow of a box around it" — the same
+thing Snap's new recording island had. On Windows 11 DWM draws its drop
+shadow around the *window's rectangle*, and the overlay window is a
+rectangle drawing a capsule inside it. `OverlayController::applyMask()` now
+sets the window's region to the capsule (`pillRegion()`, the same shape the
+KWin blur-behind region already used) on every resize and show; a regioned
+window gets no DWM frame effects, so the shadow goes with the corners. Not
+on the layer-shell path, where there is no such window. Built with
+`-DSOTTO_GPU=cpu`, `ctest -C Release` 2/2. Seen once on the real display
+through a capture: a clean capsule, no box. Not looked at with a pointer.
+
+---
+
 # Handoff — 2026-09-10 (chrome copy pass)
 
 Timur's instruction: cut the unneeded chatter — the LOCAL badge, the "100%
