@@ -98,8 +98,8 @@ Window {
             id: status
             anchors.left: bars.right
             anchors.leftMargin: 14
-            anchors.right: badge.left
-            anchors.rightMargin: 12
+            anchors.right: parent.right
+            anchors.rightMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             color: Theme.text
             font.family: Brand.bodyFamily
@@ -120,13 +120,6 @@ Window {
             Behavior on opacity {
                 NumberAnimation { duration: Theme.durBase }
             }
-        }
-
-        LocalBadge {
-            id: badge
-            anchors.right: parent.right
-            anchors.rightMargin: 20
-            anchors.verticalCenter: parent.verticalCenter
         }
     }
 }

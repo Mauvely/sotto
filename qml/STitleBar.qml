@@ -65,8 +65,6 @@ Item {
         }
         Item { Layout.fillWidth: !bar.subtitle.length }
 
-        LocalBadge { Layout.rightMargin: 6 }
-
         SWindowButton {
             id: minBtn
             kind: "minimise"

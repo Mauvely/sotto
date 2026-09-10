@@ -251,7 +251,6 @@ qt_add_qml_module(MauvelySotto
         qml/NotepadWindow.qml
         qml/LogoMark.qml
         qml/VisualizerBars.qml
-        qml/LocalBadge.qml
         qml/SPanel.qml
         qml/SSection.qml
         qml/SLabel.qml

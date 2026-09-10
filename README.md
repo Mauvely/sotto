@@ -2,12 +2,9 @@
 
 A [Mauvely](https://mauvely.com) project.
 
-**Fully local voice dictation.** Press a global shortcut, speak, and the
-formatted text lands in whatever app has focus — like Whispr Flow, but every last
-sample is processed **on your machine**, with no word-count ceiling. No accounts,
-no cloud, no telemetry: the only network access Sotto ever performs is
-downloading a speech model when *you* ask it to. Built for Linux (KDE Plasma /
-Wayland) first, with an experimental Windows port.
+Press a global shortcut, speak, and the formatted text lands in whatever app has
+focus — like Whispr Flow, but with no word-count ceiling. Built for Linux (KDE
+Plasma / Wayland) first, with an experimental Windows port.
 
 - 🎙️ Global shortcut → a small black pill appears at the bottom of the **active**
   monitor with a live waveform and live transcript
@@ -142,6 +139,13 @@ cmake --build build
 simple. **Status: builds are untested by CI and the port hasn't had much
 real-hardware time yet — bug reports welcome.** Mica/acrylic blur behind the
 translucent HUD is planned but not wired up.
+
+The backend is picked at configure time, not detected at run time, so a `cpu`
+build on a machine with a discrete GPU is a build choice, not a failed lookup —
+check the CMake configure log rather than the app. Vulkan needs the LunarG
+Vulkan SDK specifically: `ggml-vulkan` compiles its own shaders with the SDK's
+`glslc`, so a working driver alone is not enough. CUDA needs the NVIDIA CUDA
+Toolkit.
 
 ## First run
 

@@ -304,7 +304,7 @@ void Settings::setLaunchAtLogin(bool v)
             f.write("[Desktop Entry]\n"
                     "Type=Application\n"
                     "Name=Sotto\n"
-                    "Comment=Fully local voice dictation\n"
+                    "Comment=Voice dictation\n"
                     "Exec=" + QCoreApplication::applicationFilePath().toUtf8() + "\n"
                     "Icon=net.mauvely.sotto.app\n"
                     "X-KDE-autostart-phase=2\n");

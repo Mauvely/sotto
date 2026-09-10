@@ -18,14 +18,11 @@ TrayIcon::TrayIcon(App *app, QObject *parent)
     menu->addAction(tr("Notepad"), m_app, &App::showNotepad);
     menu->addAction(tr("Settings…"), m_app, &App::showSettings);
     menu->addSeparator();
-    auto *local = menu->addAction(tr("100% local — nothing leaves this device"));
-    local->setEnabled(false);
-    menu->addSeparator();
     menu->addAction(tr("Quit"), m_app, &App::quit);
 
     m_tray->setContextMenu(menu);
     m_tray->setIcon(QIcon(QStringLiteral(":/icons/app.svg")));
-    m_tray->setToolTip(QStringLiteral("Sotto — local dictation"));
+    m_tray->setToolTip(QStringLiteral("Sotto — voice dictation"));
     m_tray->show();
     Notifier::setFallbackTray(m_tray);
 

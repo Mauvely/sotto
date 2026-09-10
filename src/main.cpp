@@ -26,7 +26,7 @@ namespace {
 
 void printHelp()
 {
-    std::puts("Sotto " SOTTO_VERSION " — fully local voice dictation\n"
+    std::puts("Sotto " SOTTO_VERSION " — voice dictation\n"
               "\n"
               "Usage: MauvelySotto [option]\n"
               "\n"
@@ -37,9 +37,7 @@ void printHelp()
               "  --notepad     open the notepad window\n"
               "  --quit        quit the running instance\n"
               "  --version     print the version and exit\n"
-              "  --help        this text\n"
-              "\n"
-              "All speech recognition runs on this machine. Nothing is sent anywhere.");
+              "  --help        this text");
 }
 
 } // namespace

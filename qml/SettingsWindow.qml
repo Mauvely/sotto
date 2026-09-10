@@ -69,7 +69,7 @@ SottoWindow {
             id: titleBar
             Layout.fillWidth: true
             window: win
-            subtitle: qsTr("100% local dictation — audio never leaves this device.")
+            subtitle: qsTr("Voice dictation for any app.")
         }
 
         Flickable {
@@ -105,10 +105,7 @@ SottoWindow {
                     title: qsTr("Speech model")
 
                     SLabel {
-                        text: qsTr("Models run entirely on this machine via whisper.cpp "
-                                   + "(backend: %1). Large v3 Turbo is the sweet spot on a "
-                                   + "discrete GPU; Small if you want a light download.")
-                                   .arg(App.gpuBackendLabel)
+                        text: qsTr("Backend: %1").arg(App.gpuBackendLabel)
                     }
 
                     Repeater {
@@ -444,9 +441,8 @@ SottoWindow {
 
                     SLabel {
                         visible: Config.voiceCommands
-                        text: qsTr("Commands are matched in the transcript, so mind false positives "
-                                   + "(“a new line of products”) — disable the ones you don't use. "
-                                   + "“delete …” also answers to remove/scratch/erase.")
+                        text: qsTr("“Delete …” also answers to remove/scratch/erase — mind false "
+                                   + "positives like “a new line of products.”")
                     }
 
                     RowLayout {
@@ -518,9 +514,8 @@ SottoWindow {
 
                     SLabel {
                         visible: Config.overlayTranslucent
-                        text: qsTr("Lets your compositor blur through the popup. KWin blurs it "
-                                   + "automatically%1; on Hyprland add "
-                                   + "`layerrule = blur, sotto-hud` to your config.")
+                        text: qsTr("KWin blurs it automatically%1 — on Hyprland add "
+                                   + "`layerrule = blur, sotto-hud`.")
                                    .arg(App.blurAvailable ? "" : qsTr(" (rebuild with KWindowSystem installed)"))
                     }
 
@@ -558,13 +553,6 @@ SottoWindow {
                     SLabel {
                         text: qsTr("Sotto %1 · whisper.cpp backend: %2")
                               .arg(App.version).arg(App.gpuBackendLabel)
-                    }
-                    // Why it is that backend, in the same breath as which one it
-                    // is. "cpu" on its own leaves a reader with a discrete GPU
-                    // wondering whether the app failed to find it at run time,
-                    // when the answer is always build time.
-                    SLabel {
-                        text: App.gpuBackendReason
                     }
                     SLabel {
                         visible: App.systemInfo.length > 0

@@ -49,6 +49,11 @@ App::~App()
 
 void App::initialize()
 {
+    // The UI states which backend is running (Settings → General) but not why
+    // — that reasoning is build-time detail, not something a user reads. It
+    // still belongs in the log for whoever is debugging a slow transcription.
+    qInfo().noquote() << "whisper.cpp backend:" << gpuBackendLabel() << "—" << gpuBackendReason();
+
 #ifndef Q_OS_WIN
     // Portals >= 1.20 require unsandboxed apps to self-report an app id
     // before using identity-sensitive interfaces like GlobalShortcuts.
@@ -201,7 +206,7 @@ QString App::statusText() const
         // Sotto has none yet — it rendered literally as "2 passage(s) left".
         // This branch only runs for n > 1, so the plural is unconditional.
         // Short because the HUD is a 440px pill and this shares it with the
-        // logo, the level bars and the LOCAL badge — about 180px of room.
+        // logo and the level bars — about 210px of room.
         if (m_pendingDecodes > 1)
             return tr("Transcribing… %1 left").arg(m_pendingDecodes);
         if (m_pendingDecodes == 1)
