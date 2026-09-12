@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one entry point for producing Linux artifacts.
 #
-#   scripts/package.sh [--format appimage|flatpak|all] [--build-dir DIR] [--out DIR]
+#   scripts/package.sh [--format appimage|all] [--build-dir DIR] [--out DIR]
 #
 # Every Mauvely app has this script at this path with these flags, so "how do I
 # build a package for X" has one answer across the whole suite. It refuses
@@ -21,7 +21,7 @@ usage() {
     cat >&2 <<USAGE
 usage: scripts/package.sh [options]
 
-  --format appimage|flatpak|all   what to build (default: all)
+  --format appimage|all           what to build (default: all)
   --build-dir DIR                 CMake build directory (default: build)
   --out DIR                       copy finished artifacts here
   -h, --help                      this
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$FORMAT" in
-    appimage|flatpak|all) ;;
+    appimage|all) ;;
     msi|msix)
         echo "error: '$FORMAT' is a Windows format — use scripts/package.ps1 on Windows." >&2
         exit 2 ;;
@@ -105,12 +105,6 @@ if wanted appimage; then
     echo "==> AppImage"
     "$ROOT_DIR/packaging/linux/build-appimage.sh" "$BUILD_DIR"
     built+=("$(ls -t "$BUILD_DIR"/*.AppImage | head -1)")
-fi
-
-if wanted flatpak; then
-    echo "==> Flatpak"
-    "$ROOT_DIR/packaging/linux/build-flatpak.sh" "$BUILD_DIR"
-    built+=("$(ls -t "$BUILD_DIR"/*.flatpak | head -1)")
 fi
 
 if (( ${#built[@]} == 0 )); then

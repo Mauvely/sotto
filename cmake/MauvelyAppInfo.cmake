@@ -70,7 +70,11 @@ function(_mauvely_write_app_info)
     set(_windows_formats "")
     if("linux" IN_LIST MAUVELY_APP_PLATFORMS)
         set(_platforms "\"linux-x86_64\"")
-        set(_linux_formats "\"appimage\", \"flatpak\"")
+        # AppImage only, since 2026-09-12. Flatpak needs a Flathub listing to
+        # reach anyone — nothing here publishes to one — and flatpak-builder's
+        # sandbox (bwrap) cannot create a user namespace on these runners, so
+        # every Linux release was failing to build one regardless.
+        set(_linux_formats "\"appimage\"")
     endif()
     if("windows" IN_LIST MAUVELY_APP_PLATFORMS)
         if(_platforms)
@@ -297,9 +301,9 @@ macro(mauvely_app_info)
     configure_file(
         "${_MAUVELY_APPINFO_DIR}/../packaging/app.metainfo.xml.in"
         "${_ai_gen}/${AI_APP_ID}.metainfo.xml" @ONLY)
-    configure_file(
-        "${_MAUVELY_APPINFO_DIR}/../packaging/linux/flatpak/app.yml.in"
-        "${_ai_gen}/${AI_APP_ID}.yml" @ONLY)
+    # No Flatpak manifest generated here any more — see the note on
+    # _linux_formats above. packaging/linux/flatpak/ and build-flatpak.sh
+    # are gone with it.
 
     _mauvely_write_app_info()
 

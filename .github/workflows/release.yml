@@ -8,15 +8,19 @@
 # release goes out. Merge anything else and only the gate runs.
 #
 #   Linux    AppImage ─► R2 ─► POST /api/releases  (format: appimage, primary)
-#            Flatpak  ─► R2 ─► POST /api/releases  (format: flatpak)
 #   Windows  MSI      ─► R2 ─► POST /api/releases  (format: msi, primary)
 #            MSIX     ─► Microsoft Store ─► POST  (format: msstore)
 #
-# Four artifacts, but only two of them are the *update* answer. `/api/releases/
-# latest` returns the primary row per platform, so an installed AppImage is told
-# about the next AppImage and never about a Flatpak it cannot apply. Flatpak and
-# the Store own their own update mechanisms; they are registered so the download
-# button can offer them, not so anything self-updates into them.
+# Three artifacts, but only two of them are the *update* answer. `/api/releases/
+# latest` returns the primary row per platform. The Store owns its own update
+# mechanism; it is registered so the download button can offer it, not so
+# anything self-updates into it.
+#
+# No Flatpak, since 2026-09-12. Nothing here publishes to Flathub, so a Flatpak
+# would reach nobody a direct download does not already reach — and
+# flatpak-builder's sandbox needs a user namespace these runners cannot grant it
+# (`bwrap: cannot open /proc/sys/user/max_user_namespaces: Read-only file
+# system`), so every attempt was failing anyway. See cmake/MauvelyAppInfo.cmake.
 #
 # ── Two Windows builds, not one ─────────────────────────────────────────────
 #
@@ -305,9 +309,9 @@ jobs:
           fi
           echo "Release configuration is complete."
 
-  # ── Linux: AppImage + Flatpak → R2 ────────────────────────────────────────
+  # ── Linux: AppImage → R2 ───────────────────────────────────────────────────
   linux:
-    name: Linux (AppImage + Flatpak)
+    name: Linux (AppImage)
     needs: gate
     if: needs.gate.outputs.need_linux == 'true'
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
@@ -318,7 +322,6 @@ jobs:
     outputs:
       appimage: ${{ steps.publish.outputs.appimage }}
       appimage_sha: ${{ steps.publish.outputs.appimage_sha }}
-      flatpak: ${{ steps.publish.outputs.flatpak }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -338,12 +341,11 @@ jobs:
         # label has to encode correctly.
         if: runner.environment == 'github-hosted'
         # ubuntu-latest arrives with about 25 GB free and roughly 25 GB of
-        # preinstalled toolchains this build will never touch. Qt with
-        # QtWebEngine is ~5 GB, the build tree is several more, and
-        # flatpak-builder then pulls the KDE runtime *and* SDK — so the job
-        # finishes close enough to the line that a slightly larger Qt release
-        # tips it over, and a disk-full failure reads as a compiler error
-        # somewhere in the middle of the build.
+        # preinstalled toolchains this build will never touch, and Qt with
+        # QtWebEngine is ~5 GB on top of the build tree — close enough to the
+        # line that a slightly larger Qt release tips it over, and a
+        # disk-full failure reads as a compiler error somewhere in the middle
+        # of the build.
         #
         # The `df` either side is the point as much as the deletion: if this
         # ever fails for space again, the log says how much there was.
@@ -377,8 +379,7 @@ jobs:
             libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
-            libcups2-dev librsvg2-bin \
-            flatpak flatpak-builder
+            libcups2-dev librsvg2-bin
           # libfuse2 became libfuse2t64 in the 64-bit time_t transition — see
           # ci.yml. One name does not serve every release this runs on.
           sudo flock -w 900 /var/lock/mauvely-apt.lock apt-get -o DPkg::Lock::Timeout=600 install -y libfuse2t64 \
@@ -525,16 +526,13 @@ jobs:
           }
 
           APPIMAGE="$(ls dist/*.AppImage | head -1)"
-          FLATPAK="$(ls dist/*.flatpak | head -1)"
 
-          # The AppImage is primary: it is the only Linux format that can update
-          # itself in place, so it is what the feed must answer with.
+          # The only Linux format there is now, so also the one the feed must
+          # answer an update check with.
           publish "$APPIMAGE" appimage true
-          publish "$FLATPAK" flatpak false
 
           echo "appimage=$(basename "$APPIMAGE")" >> "$GITHUB_OUTPUT"
           echo "appimage_sha=$(sha256sum "$APPIMAGE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "flatpak=$(basename "$FLATPAK")" >> "$GITHUB_OUTPUT"
 
   # ── Windows: MSI → R2, MSIX → Microsoft Store ─────────────────────────────
   windows:
@@ -883,7 +881,6 @@ jobs:
             echo "| Platform | Format | Artifact |"
             echo "|---|---|---|"
             echo "| linux-x86_64 | appimage (primary) | \`${{ needs.linux.outputs.appimage }}\`<br>sha256 \`${{ needs.linux.outputs.appimage_sha }}\` |"
-            echo "| linux-x86_64 | flatpak | \`${{ needs.linux.outputs.flatpak }}\` |"
             echo "| windows-x86_64 | msi (primary) | \`${{ needs.windows.outputs.msi }}\` |"
             echo "| windows-x86_64 | msstore | ${{ needs.windows.outputs.published }} |"
             echo

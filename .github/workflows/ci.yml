@@ -237,10 +237,8 @@ jobs:
 
       - name: Package (Linux)
         if: runner.os == 'Linux' && steps.targets.outputs.ships == 'true'
-        # AppImage only. A Flatpak build pulls a ~1.5 GB runtime and an SDK and
-        # then compiles Qt code inside it, which is twenty minutes CI does not
-        # need to spend on a pull request — release.yml does build it, so a
-        # Flatpak-only break is caught before it ships, just not on the PR.
+        # AppImage is the only Linux format there is — see
+        # cmake/MauvelyAppInfo.cmake for why Flatpak isn't one of them.
         run: ./scripts/package.sh --format appimage --build-dir build
 
       - name: Smoke-run the AppImage (Linux)
