@@ -46,10 +46,13 @@
 # diagnosable at all.
 #   MSSTORE_SELLER_ID, MSSTORE_PRODUCT_ID, MSSTORE_IDENTITY_NAME,
 #   MSSTORE_PUBLISHER, MSSTORE_PUBLISHER_DISPLAY
-#   PUBLISH_WINDOWS   — "true" to publish the Windows lane. Unset means build
-#                       and verify but do not ship, which is where an app with
-#                       an untested port sits (Sotto). Flip one variable to
-#                       start shipping.
+#   PUBLISH_WINDOWS   — "true" to publish the Windows lane: the .msi and the
+#                       .exe, to R2 and the feed. Unset means build and verify
+#                       but do not ship, which is where an app with an untested
+#                       port sits. Flip one variable to start shipping.
+#                       The Store is a separate decision — the MSIX is built
+#                       and submitted only where MSSTORE_IDENTITY_NAME is set,
+#                       so an app ships on Windows without a listing.
 # ── Where these run ─────────────────────────────────────────────────────────
 #
 # `runs-on` reads a repository variable and falls back to GitHub's runners, so
@@ -79,14 +82,12 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
-    # The version this releases lives in CMakeLists.txt, so a commit that
-    # touches only prose cannot start one — and the changes-note convention
-    # means every real commit is followed by exactly such a commit. ci.yml has
-    # ignored these three since it was written; this file never did, and paid a
-    # gate job per note in every repository.
-    paths-ignore: ['docs/**', 'changes/**', '**/*.md']
+  # Manual only, since 2026-09-12. A push to main used to start this — a
+  # version bump merged during ordinary work could reach the real download
+  # button before anyone meant it to, on the same push that also carried
+  # unrelated commits. Releasing is now a deliberate act: bump the version,
+  # merge, then run this workflow by hand (or `gh workflow run release.yml`)
+  # when the build is meant to go out.
   workflow_dispatch:
     inputs:
       republish:
@@ -272,8 +273,18 @@ jobs:
                       MAUVELY_RELEASES_TOKEN; do
             [[ -n "${!name:-}" ]] || missing+=("$name")
           done
-          if [[ "${PUBLISH_WINDOWS:-}" == "true" ]]; then
-            for name in MSSTORE_PRODUCT_ID MSSTORE_IDENTITY_NAME MSSTORE_PUBLISHER; do
+          # The Store is a separate decision from shipping on Windows, and
+          # MSSTORE_IDENTITY_NAME is the honest trigger for it: the packaging
+          # step already branches on that one variable to decide whether to
+          # build an MSIX at all. So an app that means to submit must configure
+          # the rest, and an app that only wants its .msi in R2 is not asked
+          # for a Partner Center listing it does not have.
+          #
+          # This used to ask PUBLISH_WINDOWS, which made every Windows publish
+          # wait on a Store listing. That is why nothing but Compose ever
+          # shipped a Windows build, and why Compose stopped at 0.5.2.
+          if [[ -n "${MSSTORE_IDENTITY_NAME:-}" ]]; then
+            for name in MSSTORE_PRODUCT_ID MSSTORE_PUBLISHER; do
               [[ -n "${!name:-}" ]] || missing+=("$name")
             done
           fi
