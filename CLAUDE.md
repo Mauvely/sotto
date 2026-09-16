@@ -194,8 +194,8 @@ Guards will not do it.
 
 **Each repo has exactly one `HANDOFF.md`, and it is overwritten, not appended.**
 It says what the last session did here and what the next one needs to know — not
-a changelog. `changes/<hash>.md` and the git log are already the changelog, and a
-handoff that grew forever would be a third copy nobody reads.
+a changelog. The git log is already the changelog, and a handoff that grew
+forever would be a second copy nobody reads.
 
 Read it first. Rewrite it before finishing, if what you did changes what the next
 session should know; leave it alone if it does not.
@@ -216,10 +216,4 @@ transient state), and a list of commits.
 
 ## Commit Guidelines
 
-When completing a commit:
-1. Write a clear, concise commit message describing the change (no conventional
-   commits prefixes needed).
-2. Create a markdown file at `changes/<short-commit-hash>.md` containing
-   **Changes**, **Additions**, **Bug Fixes** and **Removals**.
-3. Include the commit hash in the changes file for reference. This lands as a
-   follow-up commit, because a file named after a commit cannot be inside it.
+When completing a commit, write a clear, concise commit message describing the change (no conventional commits prefixes needed).
