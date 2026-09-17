@@ -314,6 +314,45 @@ HOOK
     chmod +x "$APPDIR/apprun-hooks/webengine.sh"
 fi
 
+# ── OpenSSL is bundled as a pair, or not at all ─────────────────────────────
+#
+# linuxdeploy bundles what something *links*, and Qt does not link OpenSSL — its
+# TLS backend dlopens libssl and libcrypto at runtime. libssl therefore reaches
+# the AppDir only when some other library happens to link it, and an app that
+# links libcrypto alone ships half the pair.
+#
+# The host's libssl then binds against the *bundled* libcrypto, and on any
+# machine whose OpenSSL is newer than the build machine's the loader refuses it:
+#
+#   libssl.so.3: /…/AppDir/usr/lib/libcrypto.so.3: version `OPENSSL_3.6.0'
+#   not found (required by /usr/lib/libssl.so.3)
+#
+# Qt reports that as "Failed to load libssl/libcrypto", falls back to the
+# cert-only backend, and every HTTPS request fails with "TLS initialization
+# failed" — which the app shows as "Couldn't reach mauvely.com" on a machine
+# where ping and the browser are both fine. Suite 0.1.0 did exactly that on Arch
+# (OpenSSL 3.6.4) against a runner's 3.5.7. Relay escaped it by accident:
+# GStreamer links libssl, so both halves were already there.
+#
+# The missing half is added rather than both being dropped, because a binary
+# that links libcrypto directly needs the host's OpenSSL to be no *older* than
+# the build machine's — and that failure is the process not starting at all.
+pair_up() {
+    local have="$1" want="$2" src=""
+    [[ -f "$APPDIR/usr/lib/$have" && ! -f "$APPDIR/usr/lib/$want" ]] || return 0
+    src="$( { ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null || true; } \
+            | awk -v n="$want" '$1 == n { print $NF; exit }')"
+    if [[ -z "$src" || ! -f "$src" ]]; then
+        echo "error: the AppDir has $have but this machine has no $want, so the" >&2
+        echo "  AppImage would ship half of OpenSSL and have no TLS at all." >&2
+        exit 1
+    fi
+    cp -L "$src" "$APPDIR/usr/lib/$want"
+    echo "Bundled $want from $src, to match the bundled $have."
+}
+pair_up libcrypto.so.3 libssl.so.3
+pair_up libssl.so.3 libcrypto.so.3
+
 # Name matches the `platform` key the release feed indexes by (linux-x86_64), so
 # a locally built AppImage and a published one are called the same thing.
 OUT="$BUILD_DIR/$BINARY-$VERSION-linux-$ARCH.AppImage"
