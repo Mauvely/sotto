@@ -74,10 +74,10 @@ function(_mauvely_write_app_info)
     set(_windows_formats "")
     if("linux" IN_LIST MAUVELY_APP_PLATFORMS)
         set(_platforms "\"linux-x86_64\"")
-        # AppImage only, since 2026-09-12. Flatpak needs a Flathub listing to
-        # reach anyone — nothing here publishes to one — and flatpak-builder's
-        # sandbox (bwrap) cannot create a user namespace on these runners, so
-        # every Linux release was failing to build one regardless.
+        # The AppImage. A Flatpak, for Mauvely OS's remote, is not a format
+        # here: packaging/linux/build-flatpak.sh builds it, and only
+        # release.yml runs that, on GitHub's runner, because flatpak-builder's
+        # sandbox (bwrap) cannot create a user namespace on the self-hosted ones.
         set(_linux_formats "\"appimage\"")
     endif()
     if("windows" IN_LIST MAUVELY_APP_PLATFORMS)

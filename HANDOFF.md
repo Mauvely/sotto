@@ -1,5 +1,27 @@
 # Handoff — 2026-10-14
 
+## A Flatpak again, and the bug it found (later the same day)
+
+`packaging/linux/build-flatpak.sh` (app-base's, byte for byte) builds Sotto's
+Flatpak again from `packaging/linux/flatpak/app.yml.in`, and `release.yml` has a
+`flatpak` job on GitHub's `ubuntu-24.04` runner, for Mauvely OS's remote.
+app-base's `HANDOFF.md` has the shared half.
+
+**The Flatpak exited on every launch, silently, with status 0.** In the
+sandbox an app may own only bus names under its own id. `registerService()`
+takes `com.mauvely.sotto`, then the legacy `net.mauvely.sotto` as a lock; the
+sandbox refused the second, `registerService()` returned false, and Sotto read
+that as another instance running, forwarded to it and quit. The manifest now
+has `--own-name=net.mauvely.sotto`. **Remove that line with the legacy names**
+(the list below says so). After the fix the bundle installed from a
+throwaway-key repo on `stable` and opened its settings window in `hsway` as
+`com.mauvely.sotto`. Neither the hotkey nor dictation ran there: no portal and
+no microphone.
+
+**Releasing it needs a version bump.** The feed has a `flatpak` row for 0.1.0,
+the old-id bundle from before 2026-09-12, so the gate answers
+`need_flatpak=false` for 0.1.0. 0.1.1 builds every lane that has no row.
+
 ## Sotto's id is `com.mauvely.sotto` (plan 20, step 3)
 
 Plan 20 is `website-internal/docs/launch/plans/20-app-ids-to-com.md`, on that
@@ -49,13 +71,15 @@ People script against `net.mauvely.sotto` / `net.mauvely.Sotto`
 (`website-docs/…/notepad-and-cli.mdx`). The new names are `com.mauvely.sotto`
 and `com.mauvely.Sotto`, written out in `DBusService.h` rather than derived
 from `APP_ID`, because they are API. For one release the old ones also work.
-To remove them, all in `src/core/DBusService.{h,cpp}`:
+To remove them, in `src/core/DBusService.{h,cpp}` and the manifest:
 
 - `kLegacyService`, `kLegacyInterface`;
 - `LegacyDBusAdaptor` (class, constructor, and the `new LegacyDBusAdaptor(this)`
   in the `DBusService` constructor); `ExportAdaptors` can go with it;
 - the second `registerService(kLegacyService)` in `registerService()`;
 - the fallback to the old names in `callRunningInstance()`.
+- the `--own-name=net.mauvely.sotto` line in
+  `packaging/linux/flatpak/app.yml.in`.
 
 The last two are not only for scripts. The old name is a lock too: if an older
 Sotto is still running when the new one starts, the new one gives its name back

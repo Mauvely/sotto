@@ -27,7 +27,8 @@ public:
     // Until 2026-10-14 the names were net.mauvely.sotto and net.mauvely.Sotto.
     // For one release the same object is also served under them, so a script
     // written against the old ones keeps working. See LegacyDBusAdaptor below
-    // and the places that mention kLegacyService in DBusService.cpp.
+    // and the places that mention kLegacyService in DBusService.cpp, and the
+    // --own-name line in packaging/linux/flatpak/app.yml.in.
     static inline const QString kLegacyService = QStringLiteral("net.mauvely.sotto");
     static inline const QString kLegacyInterface = QStringLiteral("net.mauvely.Sotto");
 

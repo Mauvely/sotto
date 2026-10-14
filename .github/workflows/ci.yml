@@ -237,8 +237,8 @@ jobs:
 
       - name: Package (Linux)
         if: runner.os == 'Linux' && steps.targets.outputs.ships == 'true'
-        # AppImage is the only Linux format there is — see
-        # cmake/MauvelyAppInfo.cmake for why Flatpak isn't one of them.
+        # The AppImage. The Flatpak is built only by release.yml — see
+        # cmake/MauvelyAppInfo.cmake for why.
         run: ./scripts/package.sh --format appimage --build-dir build
 
       - name: Smoke-run the AppImage (Linux)

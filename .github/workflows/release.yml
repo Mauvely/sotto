@@ -8,19 +8,21 @@
 # release goes out. Merge anything else and only the gate runs.
 #
 #   Linux    AppImage ─► R2 ─► POST /api/releases  (format: appimage, primary)
+#            Flatpak  ─► R2 ─► POST /api/releases  (format: flatpak)
 #   Windows  MSI      ─► R2 ─► POST /api/releases  (format: msi, primary)
 #            MSIX     ─► Microsoft Store ─► POST  (format: msstore)
 #
-# Three artifacts, but only two of them are the *update* answer. `/api/releases/
-# latest` returns the primary row per platform. The Store owns its own update
-# mechanism; it is registered so the download button can offer it, not so
-# anything self-updates into it.
+# Four artifacts, but only two of them are the *update* answer. `/api/releases/
+# latest` returns the primary row per platform. The Store and Flatpak own their
+# own update mechanisms; they are registered so something else can fetch them,
+# not so anything self-updates into them.
 #
-# No Flatpak, since 2026-09-12. Nothing here publishes to Flathub, so a Flatpak
-# would reach nobody a direct download does not already reach — and
-# flatpak-builder's sandbox needs a user namespace these runners cannot grant it
-# (`bwrap: cannot open /proc/sys/user/max_user_namespaces: Read-only file
-# system`), so every attempt was failing anyway. See cmake/MauvelyAppInfo.cmake.
+# The Flatpak is for Mauvely OS, never Flathub: os-image's publish-flatpak.yml
+# takes the newest one from the feed into the signed Mauvely remote. Only an app
+# with packaging/linux/flatpak/app.yml.in builds one. The lane was dropped on
+# 2026-09-12, because flatpak-builder's sandbox needs a user namespace the
+# self-hosted runners cannot grant, and came back on 2026-10-14 on GitHub's own
+# runner, which can.
 #
 # ── Two Windows builds, not one ─────────────────────────────────────────────
 #
@@ -132,6 +134,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
       need_linux: ${{ steps.check.outputs.need_linux }}
       need_windows: ${{ steps.check.outputs.need_windows }}
+      need_flatpak: ${{ steps.check.outputs.need_flatpak }}
     steps:
       - uses: actions/checkout@v4
 
@@ -239,16 +242,23 @@ jobs:
           for gh, platform in (("linux", "linux-x86_64"), ("windows", "windows-x86_64")):
               need = again or platform not in have
               print(f"NEED_{gh.upper()}={str(need).lower()}")
+          # The Flatpak is a second Linux row, never a primary one, so it is
+          # asked about by format.
+          flatpak = os.path.exists("packaging/linux/flatpak/app.yml.in")
+          shipped = any(i.get("format") == "flatpak" for i in items)
+          print(f"NEED_FLATPAK={str(flatpak and (again or not shipped)).lower()}")
           ')"
 
           echo "need_linux=$NEED_LINUX" >> "$GITHUB_OUTPUT"
           echo "need_windows=$NEED_WINDOWS" >> "$GITHUB_OUTPUT"
+          echo "need_flatpak=$NEED_FLATPAK" >> "$GITHUB_OUTPUT"
 
-          if [[ "$NEED_LINUX" == "false" && "$NEED_WINDOWS" == "false" ]]; then
+          if [[ "$NEED_LINUX" == "false" && "$NEED_WINDOWS" == "false" &&
+                "$NEED_FLATPAK" == "false" ]]; then
             echo "::notice::$APP_KEY $VERSION has a primary row on every platform — nothing to do."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::$APP_KEY $VERSION needs: linux=$NEED_LINUX windows=$NEED_WINDOWS"
+            echo "::notice::$APP_KEY $VERSION needs: linux=$NEED_LINUX windows=$NEED_WINDOWS flatpak=$NEED_FLATPAK"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -534,6 +544,102 @@ jobs:
           echo "appimage=$(basename "$APPIMAGE")" >> "$GITHUB_OUTPUT"
           echo "appimage_sha=$(sha256sum "$APPIMAGE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
+  # ── Linux: Flatpak → R2, for Mauvely OS ───────────────────────────────────
+  flatpak:
+    name: Linux (Flatpak)
+    needs: gate
+    if: needs.gate.outputs.need_flatpak == 'true'
+    # GitHub's runner, never vars.RUNNER_LINUX. flatpak-builder runs every
+    # build step under bwrap, which needs a user namespace, and the self-hosted
+    # runners cannot create one:
+    #   bwrap: cannot open /proc/sys/user/max_user_namespaces: Read-only file system
+    # That is what dropped this lane on 2026-09-12.
+    #
+    # No Qt install either: the app is compiled inside org.kde.Sdk against the
+    # runtime's Qt, which is the Qt it runs on.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      flatpak: ${{ steps.publish.outputs.flatpak }}
+      flatpak_sha: ${{ steps.publish.outputs.flatpak_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Make room on the runner
+        # The KDE SDK and runtime are several gigabytes before the build starts,
+        # and Compose's QtWebEngine base is more. The guard is the Linux job's,
+        # kept although this job never runs anywhere else.
+        if: runner.environment == 'github-hosted'
+        run: |
+          echo "Before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android \
+                      /usr/share/dotnet \
+                      /opt/ghc \
+                      /usr/local/.ghcup \
+                      /usr/local/share/powershell \
+                      /usr/share/swift \
+                      "$AGENT_TOOLSDIRECTORY/CodeQL" || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "After:"; df -h / | tail -1
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          # Ubuntu 24.04 has AppArmor refuse unprivileged user namespaces, and
+          # bwrap is unprivileged here. Without this the first build step dies
+          # on `setting up uid map: Permission denied`.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Build
+        run: packaging/linux/build-flatpak.sh dist
+
+      - name: Upload and register
+        id: publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_MAX_ATTEMPTS: '5'
+          AWS_RETRY_MODE: adaptive
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          RELEASES_TOKEN: ${{ secrets.MAUVELY_RELEASES_TOKEN }}
+          V: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The Linux job's publish(), for one file: upload, read the size
+          # back, then register. Never a feed row pointing at a missing object.
+          FLATPAK="$(ls dist/*.flatpak | head -1)"
+          name="$(basename "$FLATPAK")"
+          key="$APP_KEY/$V/$name"
+          endpoint="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          size="$(stat -c%s "$FLATPAK")"
+          sha="$(sha256sum "$FLATPAK" | cut -d' ' -f1)"
+
+          aws s3 cp "$FLATPAK" "s3://mauvely-releases/$key" \
+            --endpoint-url "$endpoint" --only-show-errors
+          remote="$(aws s3api head-object --bucket mauvely-releases --key "$key" \
+                      --endpoint-url "$endpoint" --query ContentLength --output text)"
+          if [[ "$remote" != "$size" ]]; then
+            echo "::error::$name uploaded as $remote bytes, expected $size"
+            exit 1
+          fi
+          cat > meta.json <<EOF
+          {"app":"$APP_KEY","version":"$V","platform":"linux-x86_64",
+           "format":"flatpak","filename":"$name",
+           "size":$size,"sha256":"$sha","isPrimary":false}
+          EOF
+          curl -fsS -X POST "$API_BASE/api/releases" \
+            -H "authorization: Bearer $RELEASES_TOKEN" \
+            -H 'content-type: application/json' \
+            --data-binary @meta.json
+          echo
+
+          echo "flatpak=$name" >> "$GITHUB_OUTPUT"
+          echo "flatpak_sha=$sha" >> "$GITHUB_OUTPUT"
+
   # ── Windows: MSI → R2, MSIX → Microsoft Store ─────────────────────────────
   windows:
     name: Windows (MSI + Store)
@@ -791,7 +897,7 @@ jobs:
   # ── Tag and report ────────────────────────────────────────────────────────
   finalise:
     name: Verify, tag and report
-    needs: [gate, linux, windows]
+    needs: [gate, linux, windows, flatpak]
     # `always()` guarded on the gate, because a lane that was skipped — its
     # platform already published — is not a reason to skip the verification.
     # Without this, finishing a half-published version would run one lane and
@@ -845,12 +951,20 @@ jobs:
 
           missing = sorted(expected - have)
           lines = [f"| {p} | {'yes' if p in have else 'MISSING'} |" for p in sorted(expected)]
+
+          # The Flatpak is a second Linux row rather than a platform, and only
+          # an app with a manifest template builds one.
+          if os.path.exists("packaging/linux/flatpak/app.yml.in"):
+              flatpak = any(i.get("format") == "flatpak" for i in items)
+              lines.append(f"| linux-x86_64 flatpak | {'yes' if flatpak else 'MISSING'} |")
+              if not flatpak:
+                  missing.append("linux-x86_64 flatpak")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              f.write(f"### Feed check for {version}\n\n| Platform | Primary row |\n|---|---|\n")
+              f.write(f"### Feed check for {version}\n\n| Platform | Row |\n|---|---|\n")
               f.write("\n".join(lines) + "\n\n")
 
           if missing:
-              print(f"::error::{version} has no primary row for: {', '.join(missing)}. "
+              print(f"::error::{version} has no row for: {', '.join(missing)}. "
                     "Re-run this workflow — the gate is per platform and will "
                     "build only what is missing.")
               sys.exit(1)
@@ -881,6 +995,7 @@ jobs:
             echo "| Platform | Format | Artifact |"
             echo "|---|---|---|"
             echo "| linux-x86_64 | appimage (primary) | \`${{ needs.linux.outputs.appimage }}\`<br>sha256 \`${{ needs.linux.outputs.appimage_sha }}\` |"
+            echo "| linux-x86_64 | flatpak | \`${{ needs.flatpak.outputs.flatpak }}\`<br>sha256 \`${{ needs.flatpak.outputs.flatpak_sha }}\` |"
             echo "| windows-x86_64 | msi (primary) | \`${{ needs.windows.outputs.msi }}\` |"
             echo "| windows-x86_64 | msstore | ${{ needs.windows.outputs.published }} |"
             echo
