@@ -18,9 +18,9 @@ throwaway-key repo on `stable` and opened its settings window in `hsway` as
 `com.mauvely.sotto`. Neither the hotkey nor dictation ran there: no portal and
 no microphone.
 
-**Releasing it needs a version bump.** The feed has a `flatpak` row for 0.1.0,
-the old-id bundle from before 2026-09-12, so the gate answers
-`need_flatpak=false` for 0.1.0. 0.1.1 builds every lane that has no row.
+**Bumped to 0.1.1 for it.** The feed has a `flatpak` row for 0.1.0, the old-id
+bundle from before 2026-09-12, so the gate answers `need_flatpak=false` for 0.1.0.
+A release run on 0.1.0 on 2026-10-14 found nothing to do.
 
 ## Sotto's id is `com.mauvely.sotto` (plan 20, step 3)
 
