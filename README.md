@@ -215,8 +215,10 @@ MauvelySotto --notepad    # open the notepad
 MauvelySotto --quit
 ```
 
-A running instance is controlled over D-Bus (`net.mauvely.Sotto` at
-`/Sotto`): `Toggle`, `Stop`, `ShowSettings`, `ShowNotepad`, `Quit`.
+A running instance is controlled over D-Bus (interface `com.mauvely.Sotto` on
+the bus name `com.mauvely.sotto`, at `/Sotto`): `Toggle`, `Stop`,
+`ShowSettings`, `ShowNotepad`, `Quit`. The old `net.mauvely.sotto` and
+`net.mauvely.Sotto` still answer for one release.
 
 ## Formatting
 

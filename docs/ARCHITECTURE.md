@@ -10,7 +10,7 @@ Windows — and exits.
 flowchart LR
     subgraph input
         HK[GlobalShortcutsPortal<br/>xdg-desktop-portal] -- activate/deactivate --> APP
-        DBUS[DBusService<br/>net.mauvely.Sotto] -- Toggle/Show* --> APP
+        DBUS[DBusService<br/>com.mauvely.Sotto] -- Toggle/Show* --> APP
         TRAY[TrayIcon] --> APP
     end
 
