@@ -113,7 +113,11 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv); // QApplication: needed for QSystemTrayIcon
     app.setQuitOnLastWindowClosed(false);
-    QGuiApplication::setDesktopFileName(QStringLiteral("net.mauvely.sotto.app"));
+    // One of the five strings that must agree byte-for-byte or Wayland cannot
+    // associate the window with its launcher: this, the .desktop filename, its
+    // Icon=, its StartupWMClass and the autostart entry. All of them derive
+    // from APP_ID in CMakeLists.txt.
+    QGuiApplication::setDesktopFileName(QStringLiteral(APP_ID));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app.svg")));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
@@ -270,6 +274,12 @@ int main(int argc, char *argv[])
     // fell through to doing.
     if (args.contains(QStringLiteral("--quit")) || args.contains(QStringLiteral("--stop")))
         return 0;
+
+    // The id was APP_PREVIOUS_ID until 2026-10-14, and an autostart entry
+    // written under it would no longer match this app's window. Only the primary
+    // instance does this, and not the screenshot or download harnesses above,
+    // which must not touch the real autostart directory.
+    Settings::migrateAutostart(QStringLiteral(APP_PREVIOUS_ID));
 
     sotto.initialize();
 

@@ -9,11 +9,17 @@
 
 #include <windows.h>
 
+// APP_ID is a narrow string literal; this is the usual way to make it wide.
+#define SOTTO_WIDE_(s) L##s
+#define SOTTO_WIDE(s) SOTTO_WIDE_(s)
+
 namespace {
-const QString kServerName = QStringLiteral("net.mauvely.sotto");
+// Both were net.mauvely.sotto until 2026-10-14. An instance from before and one
+// from after miss each other once, during the upgrade, and that is all.
+const QString kServerName = QStringLiteral(APP_ID);
 // Per user session, not machine-wide: two people logged into the same box each
 // get their own Sotto, and "Local\" needs no privilege that "Global\" does.
-const wchar_t *kLockName = L"Local\\net.mauvely.sotto.instance";
+const wchar_t *kLockName = L"Local\\" SOTTO_WIDE(APP_ID) L".instance";
 }
 
 SingleInstance::SingleInstance(App *app, QObject *parent)

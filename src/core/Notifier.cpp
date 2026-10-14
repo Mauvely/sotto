@@ -40,7 +40,7 @@ void Notifier::notify(const QString &summary, const QString &body, int timeoutMs
         QStringLiteral("Notify"));
     msg << QStringLiteral("Sotto")            // app_name
         << quint32(0)                          // replaces_id
-        << QStringLiteral("net.mauvely.sotto.app") // app_icon
+        << QStringLiteral(APP_ID)              // app_icon
         << summary
         << body
         << QStringList()                       // actions

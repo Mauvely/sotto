@@ -34,7 +34,8 @@
 #       SHORT_NAME   "App Base"                 # without the company name
 #       GENERIC_NAME "Desktop App Template"     # the .desktop GenericName=
 #       EXEC_ARGS    "%f"                       # only if argv is really read
-#       APP_ID       net.mauvely.appbase.app    # reverse-DNS id
+#       APP_ID       com.mauvely.appbase        # reverse-DNS id, com.mauvely.<KEY>
+#       PREVIOUS_APP_ID net.mauvely.appbase.app # the id it had before, if any
 #       DESCRIPTION  "${PROJECT_DESCRIPTION}"
 #       CATEGORIES   Utility Development         # freedesktop Categories=, a list
 #       PLATFORMS    linux windows               # what this app ships for
@@ -47,14 +48,17 @@
 #
 # It calls mauvely_configure_packaging() for you — do not call both.
 #
-# ── Why `net.` and not `com.` ────────────────────────────────────────────────
+# ── Why `com.`, and PREVIOUS_APP_ID ──────────────────────────────────────────
 #
-# Compose, Snap, Play and Sotto all use `net.mauvely.*`; Relay alone used
-# `com.mauvely.*`, arguing that mauvely.com is the real domain and the others
-# were wrong. That argument is fine in the abstract and lost on the facts:
-# Compose and Sotto have installed bases, and changing an installed app's id
-# breaks its desktop integration and its autostart entry. The cheap side of the
-# rename is Relay's, which had no installed base. `net.` it is, everywhere.
+# Until 2026-10-14 every app was `net.mauvely.<key>.app`. Relay had started on
+# `com.mauvely.*` and was moved to `net.` because Compose and Sotto had
+# installed bases, and changing an installed app's id breaks its desktop
+# integration and its autostart entry. That cost is now paid on purpose: the
+# ids are `com.mauvely.<key>`, because mauvely.com is the domain the company
+# runs on, an id in a namespace it does not use invites squatting, and the
+# Android apps are already com.mauvely.relay and com.mauvely.assist.
+# PREVIOUS_APP_ID is the old id, and core/autostart.cpp moves an autostart
+# entry written under it to the new name. Plan 20 has the rest.
 
 set(_MAUVELY_APPINFO_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
@@ -108,7 +112,8 @@ endfunction()
 macro(mauvely_app_info)
     set(_ai_options PER_USER)
     set(_ai_one_value KEY BINARY CORE DISPLAY_NAME SHORT_NAME GENERIC_NAME
-                      APP_ID DESCRIPTION SUMMARY EXEC_ARGS UPGRADE_GUID ICON)
+                      APP_ID PREVIOUS_APP_ID DESCRIPTION SUMMARY EXEC_ARGS
+                      UPGRADE_GUID ICON)
     # CATEGORIES is multi-value, and it has to be. cmake_parse_arguments reads
     # ${ARGN}, which is an unquoted expansion — so a single argument written as
     # "Utility;Development;" arrives as *two* arguments, a one-value keyword
@@ -131,11 +136,13 @@ macro(mauvely_app_info)
 
     # A fork that forgets to change the id would silently collide with app-base
     # on the .desktop name, the Flatpak id and the autostart entry. Catch it at
-    # configure time rather than at "why does my app steal Snap's icon".
-    if(AI_APP_ID STREQUAL "net.mauvely.appbase.app" AND NOT AI_KEY STREQUAL "appbase")
+    # configure time rather than at "why does my app steal Snap's icon". The id
+    # is com.mauvely.<KEY> exactly, so that is the check: it also catches a copy
+    # still carrying the old `net.` id or its `.app` suffix.
+    if(NOT AI_APP_ID STREQUAL "com.mauvely.${AI_KEY}")
         message(FATAL_ERROR
-            "mauvely_app_info: APP_ID is still app-base's. Give this fork its own "
-            "reverse-DNS id (net.mauvely.<key>.app) before building.")
+            "mauvely_app_info: APP_ID is ${AI_APP_ID}, and must be "
+            "com.mauvely.${AI_KEY}. Put the old id in PREVIOUS_APP_ID.")
     endif()
 
     if(NOT AI_PLATFORMS)
@@ -280,6 +287,9 @@ macro(mauvely_app_info)
             APP_ORGANISATION="Mauvely"
             APP_KEY="${AI_KEY}"
             APP_ID="${AI_APP_ID}"
+            # Empty when there is none, rather than undefined, so the code that
+            # migrates from it needs no #ifdef.
+            APP_PREVIOUS_ID="${AI_PREVIOUS_APP_ID}"
             APP_DISPLAY_NAME="${AI_DISPLAY_NAME}"
             APP_SHORT_NAME="${AI_SHORT_NAME}"
             APP_DESCRIPTION="${AI_DESCRIPTION}"

@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QStyleHints>
 
@@ -266,6 +267,9 @@ const QString kRunValue = QStringLiteral("Sotto");
 
 QString Settings::autostartFilePath() const { return QString(); }
 
+// The value is named "Sotto", not by the id, so there is nothing to move.
+void Settings::migrateAutostart(const QString &) {}
+
 bool Settings::launchAtLogin() const
 {
     return QSettings(kRunKey, QSettings::NativeFormat).contains(kRunValue);
@@ -286,10 +290,52 @@ void Settings::setLaunchAtLogin(bool v)
 
 #else // ------------------------------------------------------------- Linux
 
-QString Settings::autostartFilePath() const
+namespace {
+QString autostartPath(const QString &id)
 {
     const QString configDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    return configDir + QStringLiteral("/autostart/net.mauvely.sotto.app.desktop");
+    return configDir + QStringLiteral("/autostart/") + id + QStringLiteral(".desktop");
+}
+} // namespace
+
+QString Settings::autostartFilePath() const { return autostartPath(QStringLiteral(APP_ID)); }
+
+void Settings::migrateAutostart(const QString &previousId)
+{
+    const QString from = autostartPath(previousId);
+    const QString to = autostartPath(QStringLiteral(APP_ID));
+    if (previousId.isEmpty() || from == to || !QFile::exists(from))
+        return;
+
+    // With both present the new one wins, and the old one still goes: it would
+    // start Sotto a second time at sign-in, and the switch in Settings could
+    // never turn it off, since it only knows the new name.
+    if (!QFile::exists(to)) {
+        QFile in(from);
+        if (!in.open(QIODevice::ReadOnly))
+            return;
+
+        // Moved rather than written afresh, so the entry keeps its Exec line and
+        // anything the person changed. Only a key whose value is the old id
+        // (Icon=) is rewritten; an Exec path that merely contains it is not.
+        QByteArrayList lines = in.readAll().split('\n');
+        for (QByteArray &line : lines) {
+            const int eq = line.indexOf('=');
+            if (eq > 0 && line.mid(eq + 1).trimmed() == previousId.toUtf8())
+                line = line.left(eq + 1) + APP_ID;
+        }
+        const QByteArray text = lines.join('\n');
+
+        // QSaveFile, because a half-written new entry would win over an intact
+        // old one on the next start.
+        QSaveFile out(to);
+        if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size() || !out.commit()) {
+            qWarning("could not move the autostart entry to \"%s\"", qUtf8Printable(to));
+            return;
+        }
+        qInfo("moved the autostart entry from \"%s\"", qUtf8Printable(from));
+    }
+    QFile::remove(from);
 }
 
 bool Settings::launchAtLogin() const { return QFile::exists(autostartFilePath()); }
@@ -306,7 +352,7 @@ void Settings::setLaunchAtLogin(bool v)
                     "Name=Sotto\n"
                     "Comment=Voice dictation\n"
                     "Exec=" + QCoreApplication::applicationFilePath().toUtf8() + "\n"
-                    "Icon=net.mauvely.sotto.app\n"
+                    "Icon=" APP_ID "\n"
                     "X-KDE-autostart-phase=2\n");
         }
     } else {

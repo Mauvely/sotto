@@ -109,6 +109,14 @@ public:
     bool launchAtLogin() const;
     void setLaunchAtLogin(bool v);
 
+    // Moves an autostart entry written under `previousId`, the app id an older
+    // build had (APP_PREVIOUS_ID), to this app's own name, so "Launch at login"
+    // that was on stays on. Left alone, the old entry still starts Sotto, but
+    // its window no longer matches it and launchAtLogin() reads false. Call it
+    // once at start; it does nothing when there is no such entry. Linux only:
+    // the Windows Run value is named "Sotto", which the id change did not touch.
+    static void migrateAutostart(const QString &previousId);
+
     // Tuning knobs without UI; editable in sotto.conf.
     int silenceMs() const;          // pause that ends an utterance
     int minUtteranceMs() const;     // shorter utterances are discarded as noise

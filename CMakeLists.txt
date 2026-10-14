@@ -342,13 +342,23 @@ if(SOTTO_STORE_BUILD)
     target_compile_definitions(MauvelySotto PRIVATE SOTTO_STORE_BUILD)
 endif()
 
+# test_autostart_migration reads APP_ID and APP_PREVIOUS_ID, so it gets them
+# too; it exists only where the migration does.
+set(_sotto_app_info_tests)
+if(SOTTO_BUILD_TESTS AND NOT WIN32)
+    set(_sotto_app_info_tests EXTRA_TARGETS test_autostart_migration)
+endif()
+
 include(cmake/MauvelyAppInfo.cmake)
 mauvely_app_info(
     KEY          sotto
     BINARY       MauvelySotto
     DISPLAY_NAME "Sotto"
     GENERIC_NAME "Local dictation"
-    APP_ID       net.mauvely.sotto.app
+    APP_ID       com.mauvely.sotto
+    # The id before 2026-10-14. Settings::migrateAutostart() moves an autostart
+    # entry written under it to the new name.
+    PREVIOUS_APP_ID net.mauvely.sotto.app
     DESCRIPTION  "${PROJECT_DESCRIPTION}"
     SUMMARY      "Fully local transcription and voice dictation"
     # `Utility` is the one Main category; `Accessibility` is an Additional one,
@@ -369,4 +379,5 @@ mauvely_app_info(
     # and no UAC prompt. It was absent from the call this replaces, which would
     # have made every future Windows update raise an elevation dialog.
     PER_USER
+    ${_sotto_app_info_tests}
 )
